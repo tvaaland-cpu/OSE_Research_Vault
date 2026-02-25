@@ -51,6 +51,8 @@ public partial class App : Application
         services.AddSingleton<IHealthRepository, HealthRepository>();
         services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
         services.AddSingleton<IDocumentImportService, SqliteDocumentImportService>();
+        services.AddSingleton<ICompanyService, SqliteCompanyService>();
+        services.AddSingleton<INoteService, SqliteNoteService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
