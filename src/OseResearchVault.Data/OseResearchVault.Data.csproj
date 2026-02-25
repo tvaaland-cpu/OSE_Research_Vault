@@ -14,5 +14,6 @@
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.6" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="UglyToad.PdfPig" Version="0.1.9" />
   </ItemGroup>
 </Project>

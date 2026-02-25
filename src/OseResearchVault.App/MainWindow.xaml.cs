@@ -5,9 +5,34 @@ namespace OseResearchVault.App;
 
 public partial class MainWindow : Window
 {
+    private readonly MainViewModel _viewModel;
+
     public MainWindow(MainViewModel viewModel)
     {
+        _viewModel = viewModel;
         InitializeComponent();
         DataContext = viewModel;
+    }
+
+    private async void DocumentDropArea_OnDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+        if (files is null || files.Length == 0)
+        {
+            return;
+        }
+
+        await _viewModel.ImportDocumentsAsync(files);
+    }
+
+    private void DocumentDropArea_OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
     }
 }

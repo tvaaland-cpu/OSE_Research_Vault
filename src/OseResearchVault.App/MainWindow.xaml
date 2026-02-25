@@ -29,6 +29,82 @@
         </Border>
 
         <Grid Grid.Column="1" Background="#FFF8FAFC">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDocumentsSelected}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+
+            <Grid Margin="20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                    <TextBlock Text="Documents" FontSize="28" FontWeight="SemiBold" />
+                    <TextBlock Text="Drag and drop files into the list to import into vault storage." Margin="0,4,0,0" Foreground="#FF4A5568" />
+                    <TextBlock Text="{Binding DocumentStatusMessage}" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="#FF2D3748" />
+                </StackPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" BorderBrush="#FFC9D2E3" BorderThickness="1" CornerRadius="6" Background="White" Padding="8" AllowDrop="True" Drop="DocumentDropArea_OnDrop" DragOver="DocumentDropArea_OnDragOver">
+                        <DataGrid ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*" />
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="*" />
+                                <DataGridTextColumn Header="Company" Binding="{Binding Company}" Width="*" />
+                                <DataGridTextColumn Header="Published date" Binding="{Binding PublishedDate}" Width="*" />
+                                <DataGridTextColumn Header="Imported date" Binding="{Binding ImportedDate}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+
+                    <Border Grid.Column="2" BorderBrush="#FFC9D2E3" BorderThickness="1" CornerRadius="6" Background="White" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="12" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="Metadata" FontSize="18" FontWeight="SemiBold" />
+                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding DetailsSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
+                                    <TextBlock Text="Extracted text preview" Margin="0,12,0,4" FontWeight="SemiBold" />
+                                    <TextBox Text="{Binding DetailsTextPreview}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="220" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Column="1" Background="#FFF8FAFC">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsDocumentsSelected}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                 <TextBlock Text="{Binding SelectedItem.Title}" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
                 <TextBlock Text="Empty shell view (MVP scaffold)" Margin="0,12,0,0" FontSize="15" Foreground="#FF4A5568" HorizontalAlignment="Center" />
