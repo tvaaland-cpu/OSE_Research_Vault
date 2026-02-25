@@ -10,7 +10,7 @@ namespace OseResearchVault.Tests;
 public sealed class AgentRunFlowTests
 {
     [Fact]
-    public async Task CanCreateTemplateRunAndPersistArtifactOutput()
+    public async Task CanCreateTemplateRunAndPersistAuditableArtifacts()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -24,14 +24,15 @@ public sealed class AgentRunFlowTests
             var ftsSyncService = new SqliteFtsSyncService(settingsService);
             var docService = new SqliteDocumentImportService(settingsService, ftsSyncService, NullLogger<SqliteDocumentImportService>.Instance);
             var companyService = new SqliteCompanyService(settingsService);
-            var agentService = new SqliteAgentService(settingsService);
+            var providerFactory = new LlmProviderFactory([new LocalEchoLlmProvider()]);
+            var agentService = new SqliteAgentService(settingsService, providerFactory);
 
             var companyId = await companyService.CreateCompanyAsync(new CompanyUpsertRequest { Name = "ACME" }, []);
 
             var inputDirectory = Path.Combine(tempRoot, "inputs");
             Directory.CreateDirectory(inputDirectory);
             var txtPath = Path.Combine(inputDirectory, "memo.txt");
-            await File.WriteAllTextAsync(txtPath, "internal memo");
+            await File.WriteAllTextAsync(txtPath, "internal memo changed guidance");
             var importResults = await docService.ImportFilesAsync([txtPath]);
             Assert.True(importResults[0].Succeeded);
             var doc = (await docService.GetDocumentsAsync()).Single();
@@ -56,11 +57,7 @@ public sealed class AgentRunFlowTests
 
             var artifacts = await agentService.GetArtifactsAsync(runId);
             var artifact = Assert.Single(artifacts);
-            Assert.Equal(string.Empty, artifact.Content);
-
-            await agentService.UpdateArtifactContentAsync(artifact.Id, "Final output");
-            artifacts = await agentService.GetArtifactsAsync(runId);
-            Assert.Equal("Final output", Assert.Single(artifacts).Content);
+            Assert.Contains("LocalEcho", artifact.Content);
 
             var settings = await settingsService.GetSettingsAsync();
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
@@ -70,13 +67,21 @@ public sealed class AgentRunFlowTests
             }.ToString());
             await connection.OpenAsync();
 
-            var columns = (await connection.QueryAsync<(string name)>("SELECT name FROM pragma_table_info('agent')")).Select(x => x.name).ToList();
-            Assert.Contains("goal", columns, StringComparer.OrdinalIgnoreCase);
-            Assert.Contains("allowed_tools_json", columns, StringComparer.OrdinalIgnoreCase);
+            var run = await connection.QuerySingleAsync<(string Status, string ModelProvider, string ModelName, string ModelParametersJson)>(
+                "SELECT status, model_provider as ModelProvider, model_name as ModelName, model_parameters_json as ModelParametersJson FROM agent_run WHERE id = @Id",
+                new { Id = runId });
+            Assert.Equal("success", run.Status);
+            Assert.Equal("local", run.ModelProvider);
+            Assert.Equal("local-echo", run.ModelName);
+            Assert.Contains("TopDocumentChunks", run.ModelParametersJson);
 
-            var runColumns = (await connection.QueryAsync<(string name)>("SELECT name FROM pragma_table_info('agent_run')")).Select(x => x.name).ToList();
-            Assert.Contains("query_text", runColumns, StringComparer.OrdinalIgnoreCase);
-            Assert.Contains("selected_document_ids_json", runColumns, StringComparer.OrdinalIgnoreCase);
+            var toolCalls = await connection.QueryAsync<(string Name, string Status)>("SELECT name, status FROM tool_call WHERE agent_run_id = @Id", new { Id = runId });
+            var call = Assert.Single(toolCalls);
+            Assert.Equal("local_search", call.Name);
+            Assert.Equal("success", call.Status);
+
+            var evidenceCount = await connection.QuerySingleAsync<int>("SELECT COUNT(1) FROM evidence_link WHERE from_entity_type = 'agent_run' AND from_entity_id = @Id", new { Id = runId });
+            Assert.True(evidenceCount > 0);
         }
         finally
         {
@@ -92,7 +97,13 @@ public sealed class AgentRunFlowTests
         private readonly AppSettings _settings = new()
         {
             DatabaseDirectory = Path.Combine(rootDirectory, "db"),
-            VaultStorageDirectory = Path.Combine(rootDirectory, "vault")
+            VaultStorageDirectory = Path.Combine(rootDirectory, "vault"),
+            DefaultLlmSettings = new LlmGenerationSettings
+            {
+                Provider = "local",
+                Model = "local-echo",
+                TopDocumentChunks = 3
+            }
         };
 
         public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)

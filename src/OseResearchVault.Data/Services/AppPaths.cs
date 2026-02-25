@@ -7,4 +7,5 @@ public static class AppPaths
         "OSE Research Vault");
 
     public static string SettingsFilePath => Path.Combine(DefaultRootDirectory, "settings.json");
+    public static string SecretsFilePath => Path.Combine(DefaultRootDirectory, "secrets.json");
 }

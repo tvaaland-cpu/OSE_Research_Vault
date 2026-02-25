@@ -965,7 +965,7 @@ public sealed class MainViewModel : ViewModelBase
             SelectedDocumentIds = selectedDocIds
         });
 
-        AgentStatusMessage = "Run recorded as success with placeholder artifact.";
+        AgentStatusMessage = "Run executed and output artifact captured.";
         await LoadAgentRunsAsync();
         SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
     }
