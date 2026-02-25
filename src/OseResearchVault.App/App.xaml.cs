@@ -55,6 +55,21 @@ public partial class App : Application
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<ISecretStore, FileSecretStore>();
+        services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
+#if OPENAI_PROVIDER
+        services.AddHttpClient<OpenAiLlmProvider>();
+        services.AddSingleton<ILLMProvider>(sp => sp.GetRequiredService<OpenAiLlmProvider>());
+#endif
+#if ANTHROPIC_PROVIDER
+        services.AddHttpClient<AnthropicLlmProvider>();
+        services.AddSingleton<ILLMProvider>(sp => sp.GetRequiredService<AnthropicLlmProvider>());
+#endif
+#if GEMINI_PROVIDER
+        services.AddHttpClient<GeminiLlmProvider>();
+        services.AddSingleton<ILLMProvider>(sp => sp.GetRequiredService<GeminiLlmProvider>());
+#endif
+        services.AddSingleton<ILLMProviderFactory, LlmProviderFactory>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
