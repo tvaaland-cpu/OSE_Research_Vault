@@ -54,6 +54,7 @@ public partial class App : Application
         services.AddSingleton<ICompanyService, SqliteCompanyService>();
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
+        services.AddSingleton<IAgentService, SqliteAgentService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
