@@ -14,6 +14,6 @@ public sealed class HealthRepository(IAppSettingsService appSettingsService) : I
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        return await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM companies");
+        return await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM company");
     }
 }

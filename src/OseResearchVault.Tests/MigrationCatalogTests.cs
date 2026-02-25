@@ -5,11 +5,17 @@ namespace OseResearchVault.Tests;
 public sealed class MigrationCatalogTests
 {
     [Fact]
-    public void Catalog_HasInitialMigrationContainingFts()
+    public void Catalog_LoadsOrderedSqlMigrations()
     {
-        var migration = Assert.Single(MigrationCatalog.All);
+        Assert.NotEmpty(MigrationCatalog.All);
 
-        Assert.Contains("fts5", migration.Script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("schema", migration.Id, StringComparison.OrdinalIgnoreCase);
+        var versions = MigrationCatalog.All.Select(m => m.Version).ToList();
+        var ordered = versions.OrderBy(version => version, StringComparer.Ordinal).ToList();
+        Assert.Equal(ordered, versions);
+
+        var firstMigration = MigrationCatalog.All[0];
+        Assert.EndsWith("initial_schema", firstMigration.Version, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS workspace", firstMigration.Script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE VIRTUAL TABLE IF NOT EXISTS note_fts", firstMigration.Script, StringComparison.OrdinalIgnoreCase);
     }
 }
