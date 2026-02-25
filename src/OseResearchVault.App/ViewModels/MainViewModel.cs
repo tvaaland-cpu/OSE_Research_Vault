@@ -30,6 +30,9 @@ public sealed class MainViewModel : ViewModelBase
     private string _companyStatusMessage = "Create and manage companies.";
     private string _noteTitle = string.Empty;
     private string _noteContent = string.Empty;
+    private string _selectedNoteType = "manual";
+    private CompanyOptionViewModel? _notesFilterCompany;
+    private string _notesFilterType = "All";
     private string _noteStatusMessage = "Create and manage notes.";
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService)
@@ -54,8 +57,12 @@ public sealed class MainViewModel : ViewModelBase
         Documents = [];
         Companies = [];
         Notes = [];
+        AllNotes = [];
         CompanyOptions = [];
+        NoteFilterCompanies = [];
         AvailableTags = [];
+        NoteTypes = ["manual", "meeting", "ai_summary", "thesis", "risk", "catalyst", "log"];
+        NoteFilterTypes = ["All", .. NoteTypes];
         HubDocuments = [];
         HubNotes = [];
         HubEvents = [];
@@ -80,13 +87,17 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<DocumentListItemViewModel> Documents { get; }
     public ObservableCollection<CompanyListItemViewModel> Companies { get; }
     public ObservableCollection<NoteListItemViewModel> Notes { get; }
+    public ObservableCollection<NoteListItemViewModel> AllNotes { get; }
     public ObservableCollection<CompanyOptionViewModel> CompanyOptions { get; }
+    public ObservableCollection<CompanyOptionViewModel> NoteFilterCompanies { get; }
     public ObservableCollection<TagSelectionViewModel> AvailableTags { get; }
     public ObservableCollection<string> HubDocuments { get; }
     public ObservableCollection<string> HubNotes { get; }
     public ObservableCollection<string> HubEvents { get; }
     public ObservableCollection<string> HubMetrics { get; }
     public ObservableCollection<string> HubAgentRuns { get; }
+    public IReadOnlyList<string> NoteTypes { get; }
+    public IReadOnlyList<string> NoteFilterTypes { get; }
     public RelayCommand RefreshDocumentsCommand { get; }
     public RelayCommand SaveDocumentCompanyCommand { get; }
     public RelayCommand SaveCompanyCommand { get; }
@@ -246,6 +257,31 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     public string NoteContent { get => _noteContent; set => SetProperty(ref _noteContent, value); }
+    public string SelectedNoteType { get => _selectedNoteType; set => SetProperty(ref _selectedNoteType, value); }
+    public CompanyOptionViewModel? NotesFilterCompany
+    {
+        get => _notesFilterCompany;
+        set
+        {
+            if (SetProperty(ref _notesFilterCompany, value))
+            {
+                ApplyNoteFilters();
+            }
+        }
+    }
+
+    public string NotesFilterType
+    {
+        get => _notesFilterType;
+        set
+        {
+            if (SetProperty(ref _notesFilterType, value))
+            {
+                ApplyNoteFilters();
+            }
+        }
+    }
+
     public string NoteStatusMessage { get => _noteStatusMessage; set => SetProperty(ref _noteStatusMessage, value); }
 
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
@@ -332,6 +368,14 @@ public sealed class MainViewModel : ViewModelBase
         {
             CompanyOptions.Add(new CompanyOptionViewModel { Id = company.Id, DisplayName = $"{company.Name} ({company.Ticker})".TrimEnd(' ', '(', ')') });
         }
+
+        NoteFilterCompanies.Clear();
+        NoteFilterCompanies.Add(new CompanyOptionViewModel { Id = string.Empty, DisplayName = "All companies" });
+        foreach (var company in CompanyOptions)
+        {
+            NoteFilterCompanies.Add(new CompanyOptionViewModel { Id = company.Id, DisplayName = company.DisplayName });
+        }
+        NotesFilterCompany ??= NoteFilterCompanies.First();
 
         AvailableTags.Clear();
         foreach (var tag in tags)
@@ -438,19 +482,22 @@ public sealed class MainViewModel : ViewModelBase
     private async Task LoadNotesAsync()
     {
         var notes = await _noteService.GetNotesAsync();
-        Notes.Clear();
+        AllNotes.Clear();
         foreach (var note in notes)
         {
-            Notes.Add(new NoteListItemViewModel
+            AllNotes.Add(new NoteListItemViewModel
             {
                 Id = note.Id,
                 Title = note.Title,
                 Content = note.Content,
+                NoteType = note.NoteType,
                 CompanyId = note.CompanyId ?? string.Empty,
                 CompanyName = note.CompanyName ?? string.Empty,
                 CreatedAt = FormatDate(note.CreatedAt)
             });
         }
+
+        ApplyNoteFilters();
     }
 
     private void PopulateNoteForm(NoteListItemViewModel? note)
@@ -463,6 +510,7 @@ public sealed class MainViewModel : ViewModelBase
 
         NoteTitle = note.Title;
         NoteContent = note.Content;
+        SelectedNoteType = note.NoteType;
         SelectedNoteCompany = CompanyOptions.FirstOrDefault(c => c.Id == note.CompanyId);
     }
 
@@ -472,6 +520,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             Title = NoteTitle.Trim(),
             Content = NoteContent,
+            NoteType = SelectedNoteType,
             CompanyId = SelectedNoteCompany?.Id
         };
 
@@ -508,7 +557,28 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedNote));
         NoteTitle = string.Empty;
         NoteContent = string.Empty;
+        SelectedNoteType = "manual";
         SelectedNoteCompany = null;
+    }
+
+    public async Task ImportAiOutputAsync(AiImportRequest request)
+    {
+        await _noteService.ImportAiOutputAsync(request);
+        NoteStatusMessage = "AI output imported.";
+        await LoadNotesAsync();
+    }
+
+    private void ApplyNoteFilters()
+    {
+        var filtered = AllNotes.Where(n =>
+            (NotesFilterCompany is null || string.IsNullOrWhiteSpace(NotesFilterCompany.Id) || string.Equals(n.CompanyId, NotesFilterCompany.Id, StringComparison.OrdinalIgnoreCase)) &&
+            (string.Equals(NotesFilterType, "All", StringComparison.OrdinalIgnoreCase) || string.Equals(n.NoteType, NotesFilterType, StringComparison.OrdinalIgnoreCase)));
+
+        Notes.Clear();
+        foreach (var note in filtered)
+        {
+            Notes.Add(note);
+        }
     }
 
     private async Task LoadCompanyHubAsync(string? companyId)

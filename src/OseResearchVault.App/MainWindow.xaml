@@ -112,6 +112,12 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <StackPanel Margin="0,0,0,12">
                 <TextBlock Text="Notes" FontSize="28" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock Text="Company" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Width="220" ItemsSource="{Binding NoteFilterCompanies}" SelectedItem="{Binding NotesFilterCompany}" DisplayMemberPath="DisplayName" Margin="0,0,16,0"/>
+                    <TextBlock Text="Type" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Width="160" ItemsSource="{Binding NoteFilterTypes}" SelectedItem="{Binding NotesFilterType}"/>
+                </StackPanel>
                 <TextBlock Text="{Binding NoteStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
             </StackPanel>
             <Grid Grid.Row="1">
@@ -119,15 +125,19 @@
                 <DataGrid Grid.Column="0" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}" AutoGenerateColumns="False" IsReadOnly="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*"/>
+                        <DataGridTextColumn Header="Type" Binding="{Binding NoteType}" Width="*"/>
                         <DataGridTextColumn Header="Company" Binding="{Binding CompanyName}" Width="*"/>
                         <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
                 <StackPanel Grid.Column="2">
                     <TextBox Text="{Binding NoteTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Title"/>
+                    <ComboBox ItemsSource="{Binding NoteTypes}" SelectedItem="{Binding SelectedNoteType}" Margin="0,0,0,8"/>
                     <ComboBox ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedNoteCompany}" DisplayMemberPath="DisplayName" Margin="0,0,0,8"/>
-                    <TextBox Text="{Binding NoteContent}" AcceptsReturn="True" TextWrapping="Wrap" Height="220" Margin="0,0,0,8"/>
+                    <TextBlock Text="Markdown" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding NoteContent}" AcceptsReturn="True" TextWrapping="Wrap" Height="220" Margin="0,0,0,8" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
                     <StackPanel Orientation="Horizontal">
+                        <Button Content="Import AI Output" Click="ImportAiOutput_OnClick" Margin="0,0,8,0"/>
                         <Button Content="New" Command="{Binding NewNoteCommand}"/>
                         <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveNoteCommand}"/>
                         <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteNoteCommand}"/>
