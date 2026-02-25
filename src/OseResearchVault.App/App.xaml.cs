@@ -1,0 +1,56 @@
+using System.Windows;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using OseResearchVault.App.Logging;
+using OseResearchVault.App.ViewModels;
+using OseResearchVault.Core.Interfaces;
+using OseResearchVault.Data.Repositories;
+using OseResearchVault.Data.Services;
+
+namespace OseResearchVault.App;
+
+public partial class App : Application
+{
+    private ServiceProvider? _serviceProvider;
+
+    protected override async void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        _serviceProvider = services.BuildServiceProvider();
+
+        var logger = _serviceProvider.GetRequiredService<ILogger<App>>();
+        logger.LogInformation("Starting OSE Research Vault");
+
+        var databaseInitializer = _serviceProvider.GetRequiredService<IDatabaseInitializer>();
+        await databaseInitializer.InitializeAsync();
+
+        var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+        mainWindow.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _serviceProvider?.Dispose();
+        base.OnExit(e);
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
+        services.AddLogging(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Information);
+            builder.AddDebug();
+            builder.AddProvider(new SimpleFileLoggerProvider());
+        });
+
+        services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
+        services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
+        services.AddSingleton<IHealthRepository, HealthRepository>();
+
+        services.AddSingleton<MainViewModel>();
+        services.AddSingleton<MainWindow>();
+    }
+}
