@@ -10,37 +10,37 @@ public sealed class SqliteFtsSyncService(IAppSettingsService appSettingsService)
         UpsertAsync(
             "note_fts",
             new { Id = id, Title = title, Content = content },
-            "INSERT INTO note_fts(id, title, content) VALUES (@Id, @Title, @Content)",
+            "INSERT INTO note_fts(id, title, body) VALUES (@Id, @Title, @Content)",
             cancellationToken);
 
     public Task DeleteNoteAsync(string id, CancellationToken cancellationToken = default) =>
         DeleteAsync("note_fts", id, cancellationToken);
 
-    public Task UpsertSnippetAsync(string id, string quoteText, string? context, CancellationToken cancellationToken = default) =>
+    public Task UpsertSnippetAsync(string id, string text, CancellationToken cancellationToken = default) =>
         UpsertAsync(
             "snippet_fts",
-            new { Id = id, QuoteText = quoteText, Context = context ?? string.Empty },
-            "INSERT INTO snippet_fts(id, quote_text, context) VALUES (@Id, @QuoteText, @Context)",
+            new { Id = id, Text = text },
+            "INSERT INTO snippet_fts(id, text) VALUES (@Id, @Text)",
             cancellationToken);
 
     public Task DeleteSnippetAsync(string id, CancellationToken cancellationToken = default) =>
         DeleteAsync("snippet_fts", id, cancellationToken);
 
-    public Task UpsertArtifactAsync(string id, string? title, string? content, CancellationToken cancellationToken = default) =>
+    public Task UpsertArtifactAsync(string id, string? content, CancellationToken cancellationToken = default) =>
         UpsertAsync(
             "artifact_fts",
-            new { Id = id, Title = title ?? string.Empty, Content = content ?? string.Empty },
-            "INSERT INTO artifact_fts(id, title, content) VALUES (@Id, @Title, @Content)",
+            new { Id = id, Content = content ?? string.Empty },
+            "INSERT INTO artifact_fts(id, content) VALUES (@Id, @Content)",
             cancellationToken);
 
     public Task DeleteArtifactAsync(string id, CancellationToken cancellationToken = default) =>
         DeleteAsync("artifact_fts", id, cancellationToken);
 
-    public Task UpsertDocumentTextAsync(string id, string content, CancellationToken cancellationToken = default) =>
+    public Task UpsertDocumentTextAsync(string id, string title, string content, CancellationToken cancellationToken = default) =>
         UpsertAsync(
             "document_text_fts",
-            new { Id = id, Content = content },
-            "INSERT INTO document_text_fts(id, content) VALUES (@Id, @Content)",
+            new { Id = id, Title = title, Content = content },
+            "INSERT INTO document_text_fts(id, title, content) VALUES (@Id, @Title, @Content)",
             cancellationToken);
 
     public Task DeleteDocumentTextAsync(string id, CancellationToken cancellationToken = default) =>

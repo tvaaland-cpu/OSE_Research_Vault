@@ -103,7 +103,7 @@ public sealed class SqliteNoteService(IAppSettingsService appSettingsService, IF
         await transaction.CommitAsync(cancellationToken);
 
         await ftsSyncService.UpsertNoteAsync(noteId, title, body, cancellationToken);
-        await ftsSyncService.UpsertArtifactAsync(artifactId, title, request.Response, cancellationToken);
+        await ftsSyncService.UpsertArtifactAsync(artifactId, request.Response, cancellationToken);
 
         return noteId;
     }

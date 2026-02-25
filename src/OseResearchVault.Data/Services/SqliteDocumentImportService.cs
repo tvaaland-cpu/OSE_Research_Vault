@@ -13,6 +13,7 @@ namespace OseResearchVault.Data.Services;
 
 public sealed partial class SqliteDocumentImportService(
     IAppSettingsService appSettingsService,
+    IFtsSyncService ftsSyncService,
     ILogger<SqliteDocumentImportService> logger) : IDocumentImportService
 {
     private static readonly HashSet<string> SupportedExtensions =
@@ -91,6 +92,12 @@ public sealed partial class SqliteDocumentImportService(
                             Now = importedAt
                         }, cancellationToken: cancellationToken));
                 }
+
+                await ftsSyncService.UpsertDocumentTextAsync(
+                    documentId,
+                    Path.GetFileNameWithoutExtension(filePath),
+                    extractedText ?? string.Empty,
+                    cancellationToken);
 
                 results.Add(new DocumentImportResult { FilePath = filePath, Succeeded = true });
             }

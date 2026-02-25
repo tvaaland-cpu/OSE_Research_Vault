@@ -53,6 +53,7 @@ public partial class App : Application
         services.AddSingleton<IDocumentImportService, SqliteDocumentImportService>();
         services.AddSingleton<ICompanyService, SqliteCompanyService>();
         services.AddSingleton<INoteService, SqliteNoteService>();
+        services.AddSingleton<ISearchService, SqliteSearchService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
