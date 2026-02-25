@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 
@@ -10,6 +11,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly ICompanyService _companyService;
     private readonly INoteService _noteService;
     private readonly ISearchService _searchService;
+    private readonly IAgentService _agentService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -43,13 +45,28 @@ public sealed class MainViewModel : ViewModelBase
     private DateTime? _searchDateTo;
     private SearchResultListItemViewModel? _selectedSearchResult;
     private string _searchStatusMessage = "Search notes, documents, snippets, and artifacts.";
+    private AgentTemplateListItemViewModel? _selectedAgentTemplate;
+    private AgentRunListItemViewModel? _selectedAgentRun;
+    private ArtifactListItemViewModel? _selectedRunArtifact;
+    private CompanyOptionViewModel? _selectedRunCompany;
+    private string _agentName = string.Empty;
+    private string _agentGoal = string.Empty;
+    private string _agentInstructions = string.Empty;
+    private string _agentAllowedTools = "[]";
+    private string _agentOutputSchema = string.Empty;
+    private string _agentEvidencePolicy = string.Empty;
+    private string _agentQuery = string.Empty;
+    private string _agentStatusMessage = "Create reusable agent templates and run history.";
+    private string _runInputSummary = "Select a run to view notebook details.";
+    private string _runToolCallsSummary = "(empty for MVP)";
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, ISearchService searchService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, ISearchService searchService, IAgentService agentService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
         _noteService = noteService;
         _searchService = searchService;
+        _agentService = agentService;
 
         NavigationItems =
         [
@@ -80,6 +97,10 @@ public sealed class MainViewModel : ViewModelBase
         HubAgentRuns = [];
         SearchResults = [];
         WorkspaceOptions = [];
+        AgentTemplates = [];
+        AgentRuns = [];
+        RunSelectableDocuments = [];
+        RunArtifacts = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
@@ -93,6 +114,10 @@ public sealed class MainViewModel : ViewModelBase
         NewNoteCommand = new RelayCommand(ClearNoteForm);
         ExecuteSearchCommand = new RelayCommand(() => _ = ExecuteSearchAsync(), () => !string.IsNullOrWhiteSpace(SearchQuery));
         OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
+        SaveAgentTemplateCommand = new RelayCommand(() => _ = SaveAgentTemplateAsync(), () => !string.IsNullOrWhiteSpace(AgentName));
+        NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
+        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
+        SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -113,6 +138,10 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> HubAgentRuns { get; }
     public ObservableCollection<SearchResultListItemViewModel> SearchResults { get; }
     public ObservableCollection<WorkspaceOptionViewModel> WorkspaceOptions { get; }
+    public ObservableCollection<AgentTemplateListItemViewModel> AgentTemplates { get; }
+    public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
+    public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
+    public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
     public IReadOnlyList<string> SearchTypeOptions { get; }
@@ -127,6 +156,10 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewNoteCommand { get; }
     public RelayCommand ExecuteSearchCommand { get; }
     public RelayCommand OpenSearchResultCommand { get; }
+    public RelayCommand SaveAgentTemplateCommand { get; }
+    public RelayCommand NewAgentTemplateCommand { get; }
+    public RelayCommand RunAgentCommand { get; }
+    public RelayCommand SaveArtifactCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -140,6 +173,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsNotesSelected));
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
+                OnPropertyChanged(nameof(IsAgentsSelected));
             }
         }
     }
@@ -149,6 +183,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsNotesSelected => IsSelected("Notes");
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
+    public bool IsAgentsSelected => IsSelected("Agents");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -337,6 +372,56 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+
+    public AgentTemplateListItemViewModel? SelectedAgentTemplate
+    {
+        get => _selectedAgentTemplate;
+        set
+        {
+            if (SetProperty(ref _selectedAgentTemplate, value))
+            {
+                RunAgentCommand.RaiseCanExecuteChanged();
+                _ = PopulateAgentTemplateFormAsync(value);
+            }
+        }
+    }
+
+    public AgentRunListItemViewModel? SelectedAgentRun
+    {
+        get => _selectedAgentRun;
+        set
+        {
+            if (SetProperty(ref _selectedAgentRun, value))
+            {
+                _ = LoadRunNotebookAsync(value);
+            }
+        }
+    }
+
+    public ArtifactListItemViewModel? SelectedRunArtifact
+    {
+        get => _selectedRunArtifact;
+        set
+        {
+            if (SetProperty(ref _selectedRunArtifact, value))
+            {
+                SaveArtifactCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public CompanyOptionViewModel? SelectedRunCompany { get => _selectedRunCompany; set => SetProperty(ref _selectedRunCompany, value); }
+    public string AgentName { get => _agentName; set { if (SetProperty(ref _agentName, value)) { SaveAgentTemplateCommand.RaiseCanExecuteChanged(); } } }
+    public string AgentGoal { get => _agentGoal; set => SetProperty(ref _agentGoal, value); }
+    public string AgentInstructions { get => _agentInstructions; set => SetProperty(ref _agentInstructions, value); }
+    public string AgentAllowedTools { get => _agentAllowedTools; set => SetProperty(ref _agentAllowedTools, value); }
+    public string AgentOutputSchema { get => _agentOutputSchema; set => SetProperty(ref _agentOutputSchema, value); }
+    public string AgentEvidencePolicy { get => _agentEvidencePolicy; set => SetProperty(ref _agentEvidencePolicy, value); }
+    public string AgentQuery { get => _agentQuery; set => SetProperty(ref _agentQuery, value); }
+    public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
+    public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
+    public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
     {
         var fileList = filePaths.Where(static x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -373,6 +458,12 @@ public sealed class MainViewModel : ViewModelBase
                 ImportedDate = FormatDate(doc.ImportedAt)
             });
         }
+
+        RunSelectableDocuments.Clear();
+        foreach (var item in Documents)
+        {
+            RunSelectableDocuments.Add(item);
+        }
     }
 
     private async Task InitializeAsync()
@@ -381,6 +472,8 @@ public sealed class MainViewModel : ViewModelBase
         await LoadDocumentsAsync();
         await LoadNotesAsync();
         await LoadSearchFiltersAsync();
+        await LoadAgentsAsync();
+        await LoadAgentRunsAsync();
     }
 
     private async Task SaveSelectedDocumentCompanyAsync()
@@ -754,6 +847,160 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         SearchStatusMessage = $"Found {results.Count} result(s).";
+    }
+
+
+    private async Task LoadAgentsAsync()
+    {
+        var agents = await _agentService.GetAgentsAsync();
+        AgentTemplates.Clear();
+        foreach (var agent in agents)
+        {
+            AgentTemplates.Add(new AgentTemplateListItemViewModel
+            {
+                Id = agent.Id,
+                Name = agent.Name,
+                Goal = agent.Goal,
+                EvidencePolicy = agent.EvidencePolicy
+            });
+        }
+    }
+
+    private async Task LoadAgentRunsAsync()
+    {
+        var runs = await _agentService.GetRunsAsync();
+        AgentRuns.Clear();
+        foreach (var run in runs)
+        {
+            AgentRuns.Add(new AgentRunListItemViewModel
+            {
+                Id = run.Id,
+                AgentName = run.AgentName,
+                CompanyName = run.CompanyName ?? string.Empty,
+                Query = run.Query,
+                Status = run.Status,
+                StartedAt = FormatDate(run.StartedAt),
+                SelectedDocumentIdsJson = run.SelectedDocumentIdsJson
+            });
+        }
+    }
+
+    private async Task SaveAgentTemplateAsync()
+    {
+        var request = new AgentTemplateUpsertRequest
+        {
+            Name = AgentName,
+            Goal = AgentGoal,
+            Instructions = AgentInstructions,
+            AllowedToolsJson = AgentAllowedTools,
+            OutputSchema = AgentOutputSchema,
+            EvidencePolicy = AgentEvidencePolicy
+        };
+
+        if (SelectedAgentTemplate is null)
+        {
+            await _agentService.CreateAgentAsync(request);
+            AgentStatusMessage = "Agent template created.";
+        }
+        else
+        {
+            await _agentService.UpdateAgentAsync(SelectedAgentTemplate.Id, request);
+            AgentStatusMessage = "Agent template updated.";
+        }
+
+        await LoadAgentsAsync();
+    }
+
+    private void ClearAgentTemplateForm()
+    {
+        _selectedAgentTemplate = null;
+        OnPropertyChanged(nameof(SelectedAgentTemplate));
+        AgentName = string.Empty;
+        AgentGoal = string.Empty;
+        AgentInstructions = string.Empty;
+        AgentAllowedTools = "[]";
+        AgentOutputSchema = string.Empty;
+        AgentEvidencePolicy = string.Empty;
+    }
+
+    private async Task PopulateAgentTemplateFormAsync(AgentTemplateListItemViewModel? template)
+    {
+        if (template is null)
+        {
+            return;
+        }
+
+        var full = (await _agentService.GetAgentsAsync()).FirstOrDefault(x => x.Id == template.Id);
+        if (full is null)
+        {
+            return;
+        }
+
+        AgentName = full.Name;
+        AgentGoal = full.Goal;
+        AgentInstructions = full.Instructions;
+        AgentAllowedTools = full.AllowedToolsJson;
+        AgentOutputSchema = full.OutputSchema;
+        AgentEvidencePolicy = full.EvidencePolicy;
+    }
+
+    private async Task RunAgentAsync()
+    {
+        if (SelectedAgentTemplate is null)
+        {
+            return;
+        }
+
+        var selectedDocIds = RunSelectableDocuments
+            .Where(d => d.IsSelected)
+            .Select(d => d.Id)
+            .Distinct()
+            .ToList();
+
+        var runId = await _agentService.CreateRunAsync(new AgentRunRequest
+        {
+            AgentId = SelectedAgentTemplate.Id,
+            CompanyId = SelectedRunCompany?.Id,
+            Query = AgentQuery,
+            SelectedDocumentIds = selectedDocIds
+        });
+
+        AgentStatusMessage = "Run recorded as success with placeholder artifact.";
+        await LoadAgentRunsAsync();
+        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+    }
+
+    private async Task LoadRunNotebookAsync(AgentRunListItemViewModel? run)
+    {
+        RunArtifacts.Clear();
+        if (run is null)
+        {
+            RunInputSummary = "Select a run to view notebook details.";
+            return;
+        }
+
+        var selectedDocIds = JsonSerializer.Deserialize<List<string>>(run.SelectedDocumentIdsJson) ?? [];
+        RunInputSummary = $"Query: {run.Query}{Environment.NewLine}Selected docs: {(selectedDocIds.Count == 0 ? "(none)" : string.Join(", ", selectedDocIds))}";
+        RunToolCallsSummary = "No tool calls yet (MVP).";
+
+        var artifacts = await _agentService.GetArtifactsAsync(run.Id);
+        foreach (var artifact in artifacts)
+        {
+            RunArtifacts.Add(new ArtifactListItemViewModel { Id = artifact.Id, Title = artifact.Title, Content = artifact.Content });
+        }
+
+        SelectedRunArtifact = RunArtifacts.FirstOrDefault();
+    }
+
+    private async Task SaveArtifactAsync()
+    {
+        if (SelectedRunArtifact is null)
+        {
+            return;
+        }
+
+        await _agentService.UpdateArtifactContentAsync(SelectedRunArtifact.Id, SelectedRunArtifact.Content);
+        AgentStatusMessage = "Artifact output saved.";
     }
 
     private void OpenSearchResult(SearchResultListItemViewModel? result)
