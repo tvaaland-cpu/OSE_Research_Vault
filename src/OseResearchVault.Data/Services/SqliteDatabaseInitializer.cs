@@ -25,21 +25,26 @@ public sealed class SqliteDatabaseInitializer(
         await connection.ExecuteAsync(
             """
             CREATE TABLE IF NOT EXISTS schema_migrations (
-                id TEXT PRIMARY KEY,
-                applied_utc TEXT NOT NULL
+                version TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
             );
             """);
 
-        var applied = (await connection.QueryAsync<string>("SELECT id FROM schema_migrations"))
+        var applied = (await connection.QueryAsync<string>("SELECT version FROM schema_migrations"))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var migration in MigrationCatalog.All.Where(m => !applied.Contains(m.Id)))
+        foreach (var migration in MigrationCatalog.All.Where(m => !applied.Contains(m.Version)))
         {
-            logger.LogInformation("Applying migration {MigrationId}", migration.Id);
-            await connection.ExecuteAsync(migration.Script);
+            logger.LogInformation("Applying migration {MigrationVersion}", migration.Version);
+
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await connection.ExecuteAsync(migration.Script, transaction: transaction);
             await connection.ExecuteAsync(
-                "INSERT INTO schema_migrations (id, applied_utc) VALUES (@Id, @AppliedUtc)",
-                new { migration.Id, AppliedUtc = DateTimeOffset.UtcNow.ToString("O") });
+                "INSERT INTO schema_migrations (version, applied_at) VALUES (@Version, @AppliedAt)",
+                new { migration.Version, AppliedAt = DateTimeOffset.UtcNow.ToString("O") },
+                transaction: transaction);
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
         logger.LogInformation("Database initialized at {DatabasePath}", settings.DatabaseFilePath);

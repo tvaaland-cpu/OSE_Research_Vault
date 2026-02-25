@@ -8,6 +8,9 @@
     <ProjectReference Include="..\OseResearchVault.Core\OseResearchVault.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Migrations\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.6" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />

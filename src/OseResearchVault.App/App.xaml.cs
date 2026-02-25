@@ -49,6 +49,7 @@ public partial class App : Application
         services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
         services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
         services.AddSingleton<IHealthRepository, HealthRepository>();
+        services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
