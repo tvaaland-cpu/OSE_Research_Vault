@@ -23,7 +23,8 @@ public sealed class CompanyManagementFlowTests
 
             var companyService = new SqliteCompanyService(settingsService);
             var documentService = new SqliteDocumentImportService(settingsService, NullLogger<SqliteDocumentImportService>.Instance);
-            var noteService = new SqliteNoteService(settingsService);
+            var ftsSyncService = new SqliteFtsSyncService(settingsService);
+            var noteService = new SqliteNoteService(settingsService, ftsSyncService);
 
             var tagId = await companyService.CreateTagAsync("Networking");
             var companyId = await companyService.CreateCompanyAsync(

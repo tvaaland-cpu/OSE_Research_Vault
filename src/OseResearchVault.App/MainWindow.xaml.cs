@@ -1,5 +1,6 @@
 using System.Windows;
 using OseResearchVault.App.ViewModels;
+using OseResearchVault.Core.Models;
 
 namespace OseResearchVault.App;
 
@@ -34,5 +35,29 @@ public partial class MainWindow : Window
     {
         e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
+    }
+
+    private async void ImportAiOutput_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new AiImportDialog
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.Request is null)
+        {
+            return;
+        }
+
+        var request = new AiImportRequest
+        {
+            Model = dialog.Request.Model,
+            Prompt = dialog.Request.Prompt,
+            Response = dialog.Request.Response,
+            Sources = dialog.Request.Sources,
+            CompanyId = _viewModel.SelectedNoteCompany?.Id
+        };
+
+        await _viewModel.ImportAiOutputAsync(request);
     }
 }
