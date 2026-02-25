@@ -114,6 +114,7 @@ public sealed partial class SqliteDocumentImportService(
             @"SELECT d.id,
                      d.title,
                      COALESCE(d.doc_type, d.document_type, '') AS DocType,
+                     d.company_id AS CompanyId,
                      c.name AS CompanyName,
                      d.published_at AS PublishedAt,
                      COALESCE(d.imported_at, d.created_at) AS ImportedAt,
@@ -138,6 +139,7 @@ public sealed partial class SqliteDocumentImportService(
             @"SELECT d.id,
                      d.title,
                      COALESCE(d.doc_type, d.document_type, '') AS DocType,
+                     d.company_id AS CompanyId,
                      c.name AS CompanyName,
                      d.published_at AS PublishedAt,
                      COALESCE(d.imported_at, d.created_at) AS ImportedAt,
@@ -152,6 +154,21 @@ public sealed partial class SqliteDocumentImportService(
                WHERE d.id = @DocumentId", new { DocumentId = documentId }, cancellationToken: cancellationToken));
 
         return row;
+    }
+
+    public async Task UpdateDocumentCompanyAsync(string documentId, string? companyId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE document
+                 SET company_id = @CompanyId,
+                     updated_at = @Now
+               WHERE id = @DocumentId",
+            new { DocumentId = documentId, CompanyId = string.IsNullOrWhiteSpace(companyId) ? null : companyId, Now = DateTime.UtcNow.ToString("O") },
+            cancellationToken: cancellationToken));
     }
 
     private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)

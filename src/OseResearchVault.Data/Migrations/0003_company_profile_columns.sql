@@ -1,0 +1,5 @@
+ALTER TABLE company ADD COLUMN isin TEXT;
+ALTER TABLE company ADD COLUMN sector TEXT;
+ALTER TABLE company ADD COLUMN industry TEXT;
+ALTER TABLE company ADD COLUMN currency TEXT;
+ALTER TABLE company ADD COLUMN summary TEXT;

@@ -5,11 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="OSE Research Vault"
-        Width="1200"
-        Height="760"
-        MinWidth="960"
-        MinHeight="600">
+        Width="1280"
+        Height="800"
+        MinWidth="980"
+        MinHeight="620">
     <Grid>
+        <Grid.Resources>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="260" />
             <ColumnDefinition Width="*" />
@@ -28,69 +31,125 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Column="1" Background="#FFF8FAFC">
-            <Grid.Style>
-                <Style TargetType="Grid">
-                    <Setter Property="Visibility" Value="Collapsed" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsDocumentsSelected}" Value="True">
-                            <Setter Property="Visibility" Value="Visible" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Grid.Style>
-
-            <Grid Margin="20">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
-                <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                    <TextBlock Text="Documents" FontSize="28" FontWeight="SemiBold" />
-                    <TextBlock Text="Drag and drop files into the list to import into vault storage." Margin="0,4,0,0" Foreground="#FF4A5568" />
-                    <TextBlock Text="{Binding DocumentStatusMessage}" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="#FF2D3748" />
-                </StackPanel>
-
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <Border Grid.Column="0" BorderBrush="#FFC9D2E3" BorderThickness="1" CornerRadius="6" Background="White" Padding="8" AllowDrop="True" Drop="DocumentDropArea_OnDrop" DragOver="DocumentDropArea_OnDragOver">
-                        <DataGrid ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*" />
-                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="*" />
-                                <DataGridTextColumn Header="Company" Binding="{Binding Company}" Width="*" />
-                                <DataGridTextColumn Header="Published date" Binding="{Binding PublishedDate}" Width="*" />
-                                <DataGridTextColumn Header="Imported date" Binding="{Binding ImportedDate}" Width="*" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Border>
-
-                    <Border Grid.Column="2" BorderBrush="#FFC9D2E3" BorderThickness="1" CornerRadius="6" Background="White" Padding="12">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="12" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Text="Metadata" FontSize="18" FontWeight="SemiBold" />
-                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding DetailsSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
-                                    <TextBlock Text="Extracted text preview" Margin="0,12,0,4" FontWeight="SemiBold" />
-                                    <TextBox Text="{Binding DetailsTextPreview}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="220" />
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Grid>
-                    </Border>
-                </Grid>
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsCompaniesSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Companies" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding CompanyStatusMessage}" Foreground="#FF2D3748" Margin="0,6,0,0"/>
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <DataGrid Grid.Column="0" ItemsSource="{Binding Companies}" SelectedItem="{Binding SelectedCompany}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
+                        <DataGridTextColumn Header="Ticker" Binding="{Binding Ticker}" Width="*"/>
+                        <DataGridTextColumn Header="ISIN" Binding="{Binding Isin}" Width="*"/>
+                        <DataGridTextColumn Header="Sector" Binding="{Binding Sector}" Width="*"/>
+                        <DataGridTextColumn Header="Tags" Binding="{Binding Tags}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"><StackPanel>
+                    <TextBox Text="{Binding CompanyName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Name"/>
+                    <TextBox Text="{Binding CompanyTicker}" Margin="0,0,0,8" ToolTip="Ticker"/>
+                    <TextBox Text="{Binding CompanyIsin}" Margin="0,0,0,8" ToolTip="ISIN"/>
+                    <TextBox Text="{Binding CompanySector}" Margin="0,0,0,8" ToolTip="Sector"/>
+                    <TextBox Text="{Binding CompanyIndustry}" Margin="0,0,0,8" ToolTip="Industry"/>
+                    <TextBox Text="{Binding CompanyCurrency}" Margin="0,0,0,8" ToolTip="Currency"/>
+                    <TextBox Text="{Binding CompanySummary}" AcceptsReturn="True" Height="80" TextWrapping="Wrap" Margin="0,0,0,8" ToolTip="Summary"/>
+                    <TextBlock Text="Tags" FontWeight="SemiBold"/>
+                    <ItemsControl ItemsSource="{Binding AvailableTags}" Margin="0,4,0,8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected}" Margin="0,2"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBox Width="180" Text="{Binding NewTagName, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Button Content="Add Tag" Margin="8,0,0,0" Command="{Binding AddTagCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="New" Command="{Binding NewCompanyCommand}"/>
+                        <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveCompanyCommand}"/>
+                        <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteCompanyCommand}"/>
+                    </StackPanel>
+                </StackPanel></ScrollViewer>
             </Grid>
+        </Grid>
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsDocumentsSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Documents" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="Drag and drop files into the list to import into vault storage." Foreground="#FF4A5568" />
+                <TextBlock Text="{Binding DocumentStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Grid.Column="0" AllowDrop="True" Drop="DocumentDropArea_OnDrop" DragOver="DocumentDropArea_OnDragOver">
+                    <DataGrid ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument}" AutoGenerateColumns="False" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*" />
+                            <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="*" />
+                            <DataGridTextColumn Header="Company" Binding="{Binding Company}" Width="*" />
+                            <DataGridTextColumn Header="Published date" Binding="{Binding PublishedDate}" Width="*" />
+                            <DataGridTextColumn Header="Imported date" Binding="{Binding ImportedDate}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="Link to company" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedDocumentCompany}" DisplayMemberPath="DisplayName" Margin="0,4,0,8"/>
+                    <Button Content="Save Link" Command="{Binding SaveDocumentCompanyCommand}" Width="120" Margin="0,0,0,8"/>
+                    <TextBlock Text="{Binding DetailsSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
+                    <TextBlock Text="Extracted text preview" Margin="0,12,0,4" FontWeight="SemiBold" />
+                    <TextBox Text="{Binding DetailsTextPreview}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="220" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsNotesSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Notes" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding NoteStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <DataGrid Grid.Column="0" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*"/>
+                        <DataGridTextColumn Header="Company" Binding="{Binding CompanyName}" Width="*"/>
+                        <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <StackPanel Grid.Column="2">
+                    <TextBox Text="{Binding NoteTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Title"/>
+                    <ComboBox ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedNoteCompany}" DisplayMemberPath="DisplayName" Margin="0,0,0,8"/>
+                    <TextBox Text="{Binding NoteContent}" AcceptsReturn="True" TextWrapping="Wrap" Height="220" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="New" Command="{Binding NewNoteCommand}"/>
+                        <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveNoteCommand}"/>
+                        <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteNoteCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsCompanyHubSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <TextBlock Text="Company Hub" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <ComboBox Width="360" Margin="16,0,0,0" ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedHubCompany}" DisplayMemberPath="DisplayName"/>
+            </StackPanel>
+            <TabControl Grid.Row="1">
+                <TabItem Header="Overview"><TextBlock Padding="12" Text="Company intelligence overview."/></TabItem>
+                <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}"/></TabItem>
+                <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}"/></TabItem>
+                <TabItem Header="Events"><ListBox ItemsSource="{Binding HubEvents}"/></TabItem>
+                <TabItem Header="Metrics"><ListBox ItemsSource="{Binding HubMetrics}"/></TabItem>
+                <TabItem Header="Agent Runs"><ListBox ItemsSource="{Binding HubAgentRuns}"/></TabItem>
+            </TabControl>
         </Grid>
 
         <Grid Grid.Column="1" Background="#FFF8FAFC">
@@ -98,16 +157,16 @@
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Visible" />
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsDocumentsSelected}" Value="True">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsCompaniesSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsDocumentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsNotesSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>
-
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="{Binding SelectedItem.Title}" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                <TextBlock Text="Empty shell view (MVP scaffold)" Margin="0,12,0,0" FontSize="15" Foreground="#FF4A5568" HorizontalAlignment="Center" />
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="520">
+                <TextBlock Text="This section is under construction." FontSize="24" FontWeight="SemiBold" TextAlignment="Center" />
+                <TextBlock Text="Use Companies, Documents, Notes, and Company Hub to manage research workflows." TextAlignment="Center" Margin="0,10,0,0" Foreground="#FF4A5568" TextWrapping="Wrap" />
             </StackPanel>
         </Grid>
     </Grid>
