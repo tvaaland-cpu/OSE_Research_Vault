@@ -119,6 +119,7 @@ public sealed partial class SqliteDocumentImportService(
 
         var rows = await connection.QueryAsync<DocumentRecord>(new CommandDefinition(
             @"SELECT d.id,
+                     d.workspace_id AS WorkspaceId,
                      d.title,
                      COALESCE(d.doc_type, d.document_type, '') AS DocType,
                      d.company_id AS CompanyId,
@@ -144,6 +145,7 @@ public sealed partial class SqliteDocumentImportService(
 
         var row = await connection.QuerySingleOrDefaultAsync<DocumentRecord>(new CommandDefinition(
             @"SELECT d.id,
+                     d.workspace_id AS WorkspaceId,
                      d.title,
                      COALESCE(d.doc_type, d.document_type, '') AS DocType,
                      d.company_id AS CompanyId,

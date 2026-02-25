@@ -103,7 +103,21 @@
                     <Button Content="Save Link" Command="{Binding SaveDocumentCompanyCommand}" Width="120" Margin="0,0,0,8"/>
                     <TextBlock Text="{Binding DetailsSummary}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
                     <TextBlock Text="Extracted text preview" Margin="0,12,0,4" FontWeight="SemiBold" />
-                    <TextBox Text="{Binding DetailsTextPreview}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="220" />
+                    <TextBox x:Name="DocumentPreviewTextBox" Text="{Binding DetailsTextPreview}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" MinHeight="220" SelectionChanged="DocumentPreviewTextBox_OnSelectionChanged" />
+                    <Button x:Name="CreateSnippetButton" Content="Create Snippet" Width="130" Margin="0,8,0,8" IsEnabled="False" Click="CreateSnippet_OnClick"/>
+                    <GroupBox Header="Snippets" Margin="0,4,0,0">
+                        <ListBox ItemsSource="{Binding DocumentSnippets}" MinHeight="120" MaxHeight="220">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="{Binding Locator}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding CreatedAt}" FontSize="11" Foreground="#FF4A5568"/>
+                                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </GroupBox>
                 </StackPanel>
             </Grid>
         </Grid>

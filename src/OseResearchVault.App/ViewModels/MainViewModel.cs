@@ -10,6 +10,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IDocumentImportService _documentImportService;
     private readonly ICompanyService _companyService;
     private readonly INoteService _noteService;
+    private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
     private NavigationItem _selectedItem;
@@ -59,12 +60,14 @@ public sealed class MainViewModel : ViewModelBase
     private string _agentStatusMessage = "Create reusable agent templates and run history.";
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
+    private string _selectedDocumentWorkspaceId = string.Empty;
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, ISearchService searchService, IAgentService agentService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
         _noteService = noteService;
+        _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
 
@@ -101,6 +104,7 @@ public sealed class MainViewModel : ViewModelBase
         AgentRuns = [];
         RunSelectableDocuments = [];
         RunArtifacts = [];
+        DocumentSnippets = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
@@ -142,6 +146,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
     public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
+    public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
     public IReadOnlyList<string> SearchTypeOptions { get; }
@@ -193,6 +198,7 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedDocument, value))
             {
                 SaveDocumentCompanyCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(CanCreateSnippet));
                 SelectedDocumentCompany = value is null
                     ? null
                     : CompanyOptions.FirstOrDefault(c => c.Id == value.CompanyId);
@@ -421,6 +427,7 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+    public bool CanCreateSnippet => SelectedDocument is not null;
 
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
     {
@@ -781,6 +788,8 @@ public sealed class MainViewModel : ViewModelBase
         {
             DetailsSummary = "Select a document to view metadata.";
             DetailsTextPreview = string.Empty;
+            _selectedDocumentWorkspaceId = string.Empty;
+            DocumentSnippets.Clear();
             return;
         }
 
@@ -789,8 +798,12 @@ public sealed class MainViewModel : ViewModelBase
         {
             DetailsSummary = "Document not found.";
             DetailsTextPreview = string.Empty;
+            _selectedDocumentWorkspaceId = string.Empty;
+            DocumentSnippets.Clear();
             return;
         }
+
+        _selectedDocumentWorkspaceId = detail.WorkspaceId;
 
         DetailsSummary =
             $"Title: {detail.Title}{Environment.NewLine}" +
@@ -804,6 +817,70 @@ public sealed class MainViewModel : ViewModelBase
         DetailsTextPreview = string.IsNullOrWhiteSpace(detail.ExtractedText)
             ? "No extracted text available for this document type."
             : detail.ExtractedText;
+
+        await LoadSnippetsForDocumentAsync(documentId);
+    }
+
+    public async Task CreateSnippetForSelectedDocumentAsync(string locator, string snippetText, string? companyId)
+    {
+        if (SelectedDocument is null)
+        {
+            DocumentStatusMessage = "Select a document before creating a snippet.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(locator))
+        {
+            DocumentStatusMessage = "Snippet locator is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(snippetText))
+        {
+            DocumentStatusMessage = "Snippet text is required.";
+            return;
+        }
+
+        var workspaceId = _selectedDocumentWorkspaceId;
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            var workspaces = await _searchService.GetWorkspacesAsync();
+            workspaceId = workspaces.FirstOrDefault()?.Id ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            DocumentStatusMessage = "Unable to resolve workspace for snippet creation.";
+            return;
+        }
+
+        await _evidenceService.CreateSnippetAsync(
+            workspaceId,
+            SelectedDocument.Id,
+            string.IsNullOrWhiteSpace(companyId) ? null : companyId,
+            sourceId: null,
+            locator,
+            snippetText,
+            createdBy: "user");
+
+        await LoadSnippetsForDocumentAsync(SelectedDocument.Id);
+        DocumentStatusMessage = "Snippet created.";
+    }
+
+    private async Task LoadSnippetsForDocumentAsync(string documentId)
+    {
+        var snippets = await _evidenceService.ListSnippetsByDocumentAsync(documentId);
+        DocumentSnippets.Clear();
+        foreach (var snippet in snippets)
+        {
+            DocumentSnippets.Add(new DocumentSnippetListItemViewModel
+            {
+                Id = snippet.Id,
+                Locator = snippet.Locator,
+                Text = snippet.Text,
+                CreatedAt = FormatDate(snippet.CreatedAt)
+            });
+        }
     }
 
     private async Task LoadSearchFiltersAsync()

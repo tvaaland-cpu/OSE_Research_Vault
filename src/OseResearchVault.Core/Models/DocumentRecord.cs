@@ -3,6 +3,7 @@ namespace OseResearchVault.Core.Models;
 public sealed class DocumentRecord
 {
     public string Id { get; init; } = string.Empty;
+    public string WorkspaceId { get; init; } = string.Empty;
     public string Title { get; init; } = string.Empty;
     public string DocType { get; init; } = string.Empty;
     public string? CompanyId { get; init; }
