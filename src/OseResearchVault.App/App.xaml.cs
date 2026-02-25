@@ -50,6 +50,7 @@ public partial class App : Application
         services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
         services.AddSingleton<IHealthRepository, HealthRepository>();
         services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
+        services.AddSingleton<IDocumentImportService, SqliteDocumentImportService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
