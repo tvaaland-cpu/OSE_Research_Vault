@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Models;
@@ -60,4 +61,46 @@ public partial class MainWindow : Window
 
         await _viewModel.ImportAiOutputAsync(request);
     }
+
+    private void DocumentPreviewTextBox_OnSelectionChanged(object sender, RoutedEventArgs e)
+    {
+        CreateSnippetButton.IsEnabled = _viewModel.SelectedDocument is not null && DocumentPreviewTextBox.SelectionLength > 0;
+    }
+
+    private async void CreateSnippet_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedDocument is null || DocumentPreviewTextBox.SelectionLength <= 0)
+        {
+            return;
+        }
+
+        var selectionText = DocumentPreviewTextBox.SelectedText;
+        var start = DocumentPreviewTextBox.SelectionStart;
+        var end = start + DocumentPreviewTextBox.SelectionLength;
+        var defaultLocator = $"sel=offset:{start}-{end}";
+
+        var companyOptions = _viewModel.CompanyOptions.ToList();
+        if (!companyOptions.Any(c => string.IsNullOrWhiteSpace(c.Id)))
+        {
+            companyOptions.Insert(0, new CompanyOptionViewModel { Id = string.Empty, DisplayName = "(No company)" });
+        }
+
+        var dialog = new CreateSnippetDialog(
+            _viewModel.SelectedDocument.Title,
+            companyOptions,
+            _viewModel.SelectedDocument.CompanyId,
+            defaultLocator,
+            selectionText)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await _viewModel.CreateSnippetForSelectedDocumentAsync(dialog.Locator, dialog.SnippetTextValue, dialog.CompanyId);
+    }
+
 }
