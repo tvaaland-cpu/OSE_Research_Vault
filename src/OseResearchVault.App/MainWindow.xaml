@@ -146,6 +146,60 @@
             </Grid>
         </Grid>
 
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsSearchSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Search" FontSize="28" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBox Width="340" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search"/>
+                    <Button Content="Search" Margin="8,0,0,0" Command="{Binding ExecuteSearchCommand}"/>
+                </StackPanel>
+                <WrapPanel Margin="0,8,0,0">
+                    <ComboBox Width="220" Margin="0,0,8,0" ItemsSource="{Binding WorkspaceOptions}" SelectedItem="{Binding SelectedSearchWorkspace}" DisplayMemberPath="Name"/>
+                    <ComboBox Width="220" Margin="0,0,8,0" ItemsSource="{Binding NoteFilterCompanies}" SelectedItem="{Binding SelectedSearchCompany}" DisplayMemberPath="DisplayName"/>
+                    <ComboBox Width="150" Margin="0,0,8,0" ItemsSource="{Binding SearchTypeOptions}" SelectedItem="{Binding SelectedSearchType}"/>
+                    <DatePicker Width="150" Margin="0,0,8,0" SelectedDate="{Binding SearchDateFrom}"/>
+                    <DatePicker Width="150" SelectedDate="{Binding SearchDateTo}"/>
+                </WrapPanel>
+                <TextBlock Text="{Binding SearchStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.Resources>
+                    <CollectionViewSource x:Key="GroupedSearchResults" Source="{Binding SearchResults}">
+                        <CollectionViewSource.GroupDescriptions>
+                            <PropertyGroupDescription PropertyName="ResultType"/>
+                        </CollectionViewSource.GroupDescriptions>
+                    </CollectionViewSource>
+                </Grid.Resources>
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <ListView ItemsSource="{Binding Source={StaticResource GroupedSearchResults}}" SelectedItem="{Binding SelectedSearchResult}">
+                    <ListView.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="16" Margin="0,8,0,4"/>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListView.GroupStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Snippet}" TextWrapping="Wrap" Foreground="#FF4A5568" Margin="0,2,0,2"/>
+                                    <TextBlock Text="{Binding CompanyName}" Foreground="#FF2B6CB0"/>
+                                    <TextBlock Text="{Binding OccurredAt}" Foreground="#FF718096"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <Button Grid.Row="1" Content="Open Selected" HorizontalAlignment="Left" Margin="0,8,0,0" Command="{Binding OpenSearchResultCommand}"/>
+            </Grid>
+        </Grid>
+
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsCompanyHubSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -171,6 +225,7 @@
                         <DataTrigger Binding="{Binding IsDocumentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsNotesSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsSearchSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>

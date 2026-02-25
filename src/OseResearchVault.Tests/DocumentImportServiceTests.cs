@@ -38,7 +38,8 @@ public sealed class DocumentImportServiceTests
             var unsupportedPath = Path.Combine(inputDirectory, "epsilon.exe");
             await File.WriteAllBytesAsync(unsupportedPath, [0x4D, 0x5A]);
 
-            var service = new SqliteDocumentImportService(settingsService, NullLogger<SqliteDocumentImportService>.Instance);
+            var ftsSyncService = new SqliteFtsSyncService(settingsService);
+            var service = new SqliteDocumentImportService(settingsService, ftsSyncService, NullLogger<SqliteDocumentImportService>.Instance);
             var results = await service.ImportFilesAsync([txtPath, htmlPath, docxPath, pngPath, unsupportedPath]);
 
             Assert.Equal(5, results.Count);

@@ -9,6 +9,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IDocumentImportService _documentImportService;
     private readonly ICompanyService _companyService;
     private readonly INoteService _noteService;
+    private readonly ISearchService _searchService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -34,12 +35,21 @@ public sealed class MainViewModel : ViewModelBase
     private CompanyOptionViewModel? _notesFilterCompany;
     private string _notesFilterType = "All";
     private string _noteStatusMessage = "Create and manage notes.";
+    private string _searchQuery = string.Empty;
+    private WorkspaceOptionViewModel? _selectedSearchWorkspace;
+    private CompanyOptionViewModel? _selectedSearchCompany;
+    private string _selectedSearchType = "All";
+    private DateTime? _searchDateFrom;
+    private DateTime? _searchDateTo;
+    private SearchResultListItemViewModel? _selectedSearchResult;
+    private string _searchStatusMessage = "Search notes, documents, snippets, and artifacts.";
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, ISearchService searchService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
         _noteService = noteService;
+        _searchService = searchService;
 
         NavigationItems =
         [
@@ -68,6 +78,9 @@ public sealed class MainViewModel : ViewModelBase
         HubEvents = [];
         HubMetrics = [];
         HubAgentRuns = [];
+        SearchResults = [];
+        WorkspaceOptions = [];
+        SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
         SaveDocumentCompanyCommand = new RelayCommand(() => _ = SaveSelectedDocumentCompanyAsync(), () => SelectedDocument is not null);
@@ -78,6 +91,8 @@ public sealed class MainViewModel : ViewModelBase
         SaveNoteCommand = new RelayCommand(() => _ = SaveNoteAsync(), () => !string.IsNullOrWhiteSpace(NoteTitle));
         DeleteNoteCommand = new RelayCommand(() => _ = DeleteNoteAsync(), () => SelectedNote is not null);
         NewNoteCommand = new RelayCommand(ClearNoteForm);
+        ExecuteSearchCommand = new RelayCommand(() => _ = ExecuteSearchAsync(), () => !string.IsNullOrWhiteSpace(SearchQuery));
+        OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -96,8 +111,11 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> HubEvents { get; }
     public ObservableCollection<string> HubMetrics { get; }
     public ObservableCollection<string> HubAgentRuns { get; }
+    public ObservableCollection<SearchResultListItemViewModel> SearchResults { get; }
+    public ObservableCollection<WorkspaceOptionViewModel> WorkspaceOptions { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
+    public IReadOnlyList<string> SearchTypeOptions { get; }
     public RelayCommand RefreshDocumentsCommand { get; }
     public RelayCommand SaveDocumentCompanyCommand { get; }
     public RelayCommand SaveCompanyCommand { get; }
@@ -107,6 +125,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand SaveNoteCommand { get; }
     public RelayCommand DeleteNoteCommand { get; }
     public RelayCommand NewNoteCommand { get; }
+    public RelayCommand ExecuteSearchCommand { get; }
+    public RelayCommand OpenSearchResultCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -119,6 +139,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompaniesSelected));
                 OnPropertyChanged(nameof(IsNotesSelected));
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
+                OnPropertyChanged(nameof(IsSearchSelected));
             }
         }
     }
@@ -127,6 +148,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompaniesSelected => IsSelected("Companies");
     public bool IsNotesSelected => IsSelected("Notes");
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
+    public bool IsSearchSelected => IsSelected("Search");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -284,6 +306,37 @@ public sealed class MainViewModel : ViewModelBase
 
     public string NoteStatusMessage { get => _noteStatusMessage; set => SetProperty(ref _noteStatusMessage, value); }
 
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (SetProperty(ref _searchQuery, value))
+            {
+                ExecuteSearchCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public WorkspaceOptionViewModel? SelectedSearchWorkspace { get => _selectedSearchWorkspace; set => SetProperty(ref _selectedSearchWorkspace, value); }
+    public CompanyOptionViewModel? SelectedSearchCompany { get => _selectedSearchCompany; set => SetProperty(ref _selectedSearchCompany, value); }
+    public string SelectedSearchType { get => _selectedSearchType; set => SetProperty(ref _selectedSearchType, value); }
+    public DateTime? SearchDateFrom { get => _searchDateFrom; set => SetProperty(ref _searchDateFrom, value); }
+    public DateTime? SearchDateTo { get => _searchDateTo; set => SetProperty(ref _searchDateTo, value); }
+    public string SearchStatusMessage { get => _searchStatusMessage; set => SetProperty(ref _searchStatusMessage, value); }
+
+    public SearchResultListItemViewModel? SelectedSearchResult
+    {
+        get => _selectedSearchResult;
+        set
+        {
+            if (SetProperty(ref _selectedSearchResult, value))
+            {
+                OpenSearchResultCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
     {
         var fileList = filePaths.Where(static x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -327,6 +380,7 @@ public sealed class MainViewModel : ViewModelBase
         await LoadCompaniesAndTagsAsync();
         await LoadDocumentsAsync();
         await LoadNotesAsync();
+        await LoadSearchFiltersAsync();
     }
 
     private async Task SaveSelectedDocumentCompanyAsync()
@@ -376,6 +430,8 @@ public sealed class MainViewModel : ViewModelBase
             NoteFilterCompanies.Add(new CompanyOptionViewModel { Id = company.Id, DisplayName = company.DisplayName });
         }
         NotesFilterCompany ??= NoteFilterCompanies.First();
+
+        SelectedSearchCompany ??= NoteFilterCompanies.First();
 
         AvailableTags.Clear();
         foreach (var tag in tags)
@@ -656,6 +712,90 @@ public sealed class MainViewModel : ViewModelBase
             ? "No extracted text available for this document type."
             : detail.ExtractedText;
     }
+
+    private async Task LoadSearchFiltersAsync()
+    {
+        var workspaces = await _searchService.GetWorkspacesAsync();
+        WorkspaceOptions.Clear();
+        WorkspaceOptions.Add(new WorkspaceOptionViewModel { Id = string.Empty, Name = "All workspaces" });
+        foreach (var workspace in workspaces)
+        {
+            WorkspaceOptions.Add(new WorkspaceOptionViewModel { Id = workspace.Id, Name = workspace.Name });
+        }
+
+        SelectedSearchWorkspace ??= WorkspaceOptions.FirstOrDefault();
+    }
+
+    private async Task ExecuteSearchAsync()
+    {
+        var query = new SearchQuery
+        {
+            QueryText = SearchQuery,
+            WorkspaceId = string.IsNullOrWhiteSpace(SelectedSearchWorkspace?.Id) ? null : SelectedSearchWorkspace.Id,
+            CompanyId = string.IsNullOrWhiteSpace(SelectedSearchCompany?.Id) ? null : SelectedSearchCompany.Id,
+            Type = SelectedSearchType,
+            DateFromIso = SearchDateFrom?.Date.ToString("O"),
+            DateToIso = SearchDateTo?.Date.AddDays(1).AddTicks(-1).ToString("O")
+        };
+
+        var results = await _searchService.SearchAsync(query);
+        SearchResults.Clear();
+        foreach (var result in results)
+        {
+            SearchResults.Add(new SearchResultListItemViewModel
+            {
+                ResultType = result.ResultType,
+                EntityId = result.EntityId,
+                Title = result.Title,
+                CompanyName = result.CompanyName ?? string.Empty,
+                OccurredAt = FormatDate(result.OccurredAt),
+                Snippet = StripHighlight(result.MatchSnippet)
+            });
+        }
+
+        SearchStatusMessage = $"Found {results.Count} result(s).";
+    }
+
+    private void OpenSearchResult(SearchResultListItemViewModel? result)
+    {
+        if (result is null)
+        {
+            return;
+        }
+
+        if (string.Equals(result.ResultType, "note", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Notes", StringComparison.OrdinalIgnoreCase));
+            SelectedNote = Notes.FirstOrDefault(n => n.Id == result.EntityId) ?? AllNotes.FirstOrDefault(n => n.Id == result.EntityId);
+            if (SelectedNote is not null)
+            {
+                NoteStatusMessage = $"Opened note match: {result.Title}";
+            }
+
+            return;
+        }
+
+        if (string.Equals(result.ResultType, "document", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+            SelectedDocument = Documents.FirstOrDefault(d => d.Id == result.EntityId);
+            if (SelectedDocument is not null)
+            {
+                DocumentStatusMessage = $"Opened document match: {result.Title}";
+                if (!string.IsNullOrWhiteSpace(result.Snippet))
+                {
+                    DetailsTextPreview = result.Snippet;
+                }
+            }
+
+            return;
+        }
+
+        SearchStatusMessage = $"{result.ResultType} results are searchable, but this build does not yet have a dedicated detail view.";
+    }
+
+    private static string StripHighlight(string value) => value.Replace("<mark>", string.Empty, StringComparison.OrdinalIgnoreCase)
+        .Replace("</mark>", string.Empty, StringComparison.OrdinalIgnoreCase);
 
     private bool IsSelected(string title) => string.Equals(SelectedItem.Title, title, StringComparison.OrdinalIgnoreCase);
 
