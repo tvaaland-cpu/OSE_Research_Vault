@@ -13,6 +13,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IMetricService _metricService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -64,7 +65,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
     private string _selectedDocumentWorkspaceId = string.Empty;
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
@@ -72,6 +73,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _metricService = metricService;
 
         NavigationItems =
         [
@@ -897,10 +899,38 @@ public sealed class MainViewModel : ViewModelBase
             DocumentSnippets.Add(new DocumentSnippetListItemViewModel
             {
                 Id = snippet.Id,
+                CompanyId = snippet.CompanyId,
+                DocumentTitle = SelectedDocument?.Title ?? string.Empty,
                 Locator = snippet.Locator,
                 Text = snippet.Text,
                 CreatedAt = FormatDate(snippet.CreatedAt)
             });
+        }
+    }
+
+    public async Task CreateMetricFromSnippetAsync(string snippetId, string companyId, string metricName, string period, double value, string? unit, string? currency)
+    {
+        if (string.IsNullOrWhiteSpace(snippetId) || string.IsNullOrWhiteSpace(companyId) || string.IsNullOrWhiteSpace(metricName) || string.IsNullOrWhiteSpace(period))
+        {
+            DocumentStatusMessage = "Metric fields are required.";
+            return;
+        }
+
+        await _metricService.CreateMetricAsync(new MetricCreateRequest
+        {
+            SnippetId = snippetId,
+            CompanyId = companyId,
+            MetricName = metricName,
+            Period = period,
+            Value = value,
+            Unit = unit,
+            Currency = currency
+        });
+
+        DocumentStatusMessage = "Metric created from snippet.";
+        if (SelectedHubCompany?.Id == companyId)
+        {
+            await LoadCompanyHubAsync(companyId);
         }
     }
 
