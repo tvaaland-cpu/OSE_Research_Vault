@@ -94,20 +94,41 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
         var artifacts = await connection.QueryAsync<ArtifactRow>(new CommandDefinition(artifactsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         var hasArchivedFlag = await HasColumnAsync(connection, "document", "is_archived", cancellationToken);
-        var documentsSql = hasArchivedFlag
-            ? @"SELECT id, title, file_path AS FilePath, COALESCE(content_hash, '') AS ContentHash
-                  FROM document
-                 WHERE company_id = @CompanyId
-                   AND COALESCE(is_archived, 0) = 0"
-            : @"SELECT id, title, file_path AS FilePath, COALESCE(content_hash, '') AS ContentHash
-                  FROM document
-                 WHERE company_id = @CompanyId";
+        var documentsSql = redactionOptions.ExcludePrivateTaggedItems
+            ? hasArchivedFlag
+                ? @"SELECT d.id, d.title, d.file_path AS FilePath, COALESCE(d.content_hash, '') AS ContentHash
+                      FROM document d
+                     WHERE d.company_id = @CompanyId
+                       AND COALESCE(d.is_archived, 0) = 0
+                       AND NOT EXISTS (
+                            SELECT 1
+                              FROM document_tag dt
+                              INNER JOIN tag t ON t.id = dt.tag_id
+                             WHERE dt.document_id = d.id
+                               AND LOWER(t.name) = 'private')"
+                : @"SELECT d.id, d.title, d.file_path AS FilePath, COALESCE(d.content_hash, '') AS ContentHash
+                      FROM document d
+                     WHERE d.company_id = @CompanyId
+                       AND NOT EXISTS (
+                            SELECT 1
+                              FROM document_tag dt
+                              INNER JOIN tag t ON t.id = dt.tag_id
+                             WHERE dt.document_id = d.id
+                               AND LOWER(t.name) = 'private')"
+            : hasArchivedFlag
+                ? @"SELECT id, title, file_path AS FilePath, COALESCE(content_hash, '') AS ContentHash
+                      FROM document
+                     WHERE company_id = @CompanyId
+                       AND COALESCE(is_archived, 0) = 0"
+                : @"SELECT id, title, file_path AS FilePath, COALESCE(content_hash, '') AS ContentHash
+                      FROM document
+                     WHERE company_id = @CompanyId";
         var documents = (await connection.QueryAsync<DocumentRow>(new CommandDefinition(documentsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken))).ToList();
 
         var index = Redact(BuildIndex(company, DateTimeOffset.UtcNow, workspaceId), redactionOptions);
         var notesText = Redact(BuildNotes(notes), redactionOptions);
-        var metricsText = Redact(BuildMetricsCsv(metrics), redactionOptions);
-        var eventsText = Redact(BuildEventsCsv(events), redactionOptions);
+        var metricsText = BuildMetricsCsv(metrics, redactionOptions);
+        var eventsText = BuildEventsCsv(events, redactionOptions);
 
         await File.WriteAllTextAsync(Path.Combine(outputFolder, "index.md"), index, cancellationToken);
         await File.WriteAllTextAsync(Path.Combine(outputFolder, "notes.md"), notesText, cancellationToken);
@@ -187,6 +208,17 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
 
     private string Redact(string text, RedactionOptions options) => redactionService.Redact(text, options).RedactedText;
 
+    private string? RedactIfSensitive(string? text, RedactionOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var redacted = Redact(text, options);
+        return redacted == text ? text : redacted;
+    }
+
     private static string BuildIndex(CompanyRow company, DateTimeOffset generatedAt, string workspaceId)
     {
         var sb = new StringBuilder();
@@ -229,25 +261,25 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
         return sb.ToString();
     }
 
-    private static string BuildMetricsCsv(IEnumerable<MetricRow> metrics)
+    private string BuildMetricsCsv(IEnumerable<MetricRow> metrics, RedactionOptions redactionOptions)
     {
         var rows = new StringBuilder();
         rows.AppendLine("metric_name,period,value,unit,currency,evidence_document_title,evidence_locator,snippet_id");
         foreach (var metric in metrics)
         {
-            rows.AppendLine(string.Join(',', Csv(metric.MetricName), Csv(metric.Period), Csv(metric.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty), Csv(metric.Unit), Csv(metric.Currency), Csv(metric.EvidenceDocumentTitle), Csv(metric.EvidenceLocator), Csv(metric.SnippetId)));
+            rows.AppendLine(string.Join(',', Csv(metric.MetricName), Csv(metric.Period), Csv(metric.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty), Csv(metric.Unit), Csv(metric.Currency), Csv(RedactIfSensitive(metric.EvidenceDocumentTitle, redactionOptions)), Csv(RedactIfSensitive(metric.EvidenceLocator, redactionOptions)), Csv(RedactIfSensitive(metric.SnippetId, redactionOptions))));
         }
 
         return rows.ToString();
     }
 
-    private static string BuildEventsCsv(IEnumerable<EventRow> events)
+    private string BuildEventsCsv(IEnumerable<EventRow> events, RedactionOptions redactionOptions)
     {
         var rows = new StringBuilder();
         rows.AppendLine("event_date,event_type,confidence,description,evidence_document_title,evidence_locator");
         foreach (var item in events)
         {
-            rows.AppendLine(string.Join(',', Csv(item.EventDate), Csv(item.EventType), Csv(item.Confidence), Csv(item.Description), Csv(item.EvidenceDocumentTitle), Csv(item.EvidenceLocator)));
+            rows.AppendLine(string.Join(',', Csv(item.EventDate), Csv(item.EventType), Csv(item.Confidence), Csv(Redact(item.Description, redactionOptions)), Csv(RedactIfSensitive(item.EvidenceDocumentTitle, redactionOptions)), Csv(RedactIfSensitive(item.EvidenceLocator, redactionOptions))));
         }
 
         return rows.ToString();
