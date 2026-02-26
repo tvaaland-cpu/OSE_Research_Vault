@@ -15,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IAutomationService _automationService;
     private readonly IAskMyVaultService _askMyVaultService;
     private readonly IMetricService _metricService;
     private readonly IMetricConflictDialogService _metricConflictDialogService;
@@ -79,7 +80,11 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricCurrency = string.Empty;
     private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private AutomationListItemViewModel? _selectedAutomation;
+    private AutomationRunListItemViewModel? _selectedAutomationRun;
+    private string _automationStatusMessage = "Create and schedule automations.";
 
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAutomationService automationService)
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAskMyVaultService askMyVaultService)
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService, IMetricConflictDialogService metricConflictDialogService)
     private string _evidenceCoverageLabel = "0 evidence links";
@@ -104,6 +109,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _automationService = automationService;
         _askMyVaultService = askMyVaultService;
         _metricService = metricService;
         _metricConflictDialogService = metricConflictDialogService;
@@ -119,6 +125,7 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Documents"),
             new NavigationItem("Notes"),
             new NavigationItem("Agents"),
+            new NavigationItem("Automations"),
             new NavigationItem("Ask My Vault"),
             new NavigationItem("Search"),
             new NavigationItem("Settings")
@@ -149,6 +156,8 @@ public sealed class MainViewModel : ViewModelBase
         RunArtifacts = [];
         ArtifactEvidenceLinks = [];
         DocumentSnippets = [];
+        Automations = [];
+        AutomationRuns = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
@@ -169,6 +178,11 @@ public sealed class MainViewModel : ViewModelBase
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        NewAutomationCommand = new RelayCommand(() => _ = NewAutomationAsync());
+        EditAutomationCommand = new RelayCommand(() => _ = EditAutomationAsync(), () => SelectedAutomation is not null);
+        DeleteAutomationCommand = new RelayCommand(() => _ = DeleteAutomationAsync(), () => SelectedAutomation is not null);
+        RunAutomationNowCommand = new RelayCommand(() => _ = RunAutomationNowAsync(), () => SelectedAutomation is not null);
+        ToggleAutomationEnabledCommand = new RelayCommand(() => _ = ToggleAutomationEnabledAsync(), () => SelectedAutomation is not null);
         SaveMetricCommand = new RelayCommand(() => _ = SaveMetricAsync(), () => SelectedHubCompany is not null && !string.IsNullOrWhiteSpace(MetricName) && !string.IsNullOrWhiteSpace(MetricPeriod));
         OpenMetricEvidenceCommand = new RelayCommand(param => _ = OpenMetricEvidenceAsync(param as CompanyMetricListItemViewModel));
         SaveMetricCommand = new RelayCommand(() => _ = SaveSelectedMetricAsync(), () => SelectedHubMetric is not null && !string.IsNullOrWhiteSpace(MetricEditName));
@@ -203,6 +217,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<ArtifactEvidenceLinkListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
+    public ObservableCollection<AutomationListItemViewModel> Automations { get; }
+    public ObservableCollection<AutomationRunListItemViewModel> AutomationRuns { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
     public IReadOnlyList<string> SearchTypeOptions { get; }
@@ -223,6 +239,11 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand NewAutomationCommand { get; }
+    public RelayCommand EditAutomationCommand { get; }
+    public RelayCommand DeleteAutomationCommand { get; }
+    public RelayCommand RunAutomationNowCommand { get; }
+    public RelayCommand ToggleAutomationEnabledCommand { get; }
     public RelayCommand SaveMetricCommand { get; }
     public RelayCommand OpenMetricEvidenceCommand { get; }
     public RelayCommand SaveMetricCommand { get; }
@@ -241,6 +262,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsAskMyVaultSelected));
             }
         }
@@ -252,6 +274,35 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsAutomationsSelected => IsSelected("Automations");
+
+    public AutomationListItemViewModel? SelectedAutomation
+    {
+        get => _selectedAutomation;
+        set
+        {
+            if (SetProperty(ref _selectedAutomation, value))
+            {
+                EditAutomationCommand.RaiseCanExecuteChanged();
+                DeleteAutomationCommand.RaiseCanExecuteChanged();
+                RunAutomationNowCommand.RaiseCanExecuteChanged();
+                ToggleAutomationEnabledCommand.RaiseCanExecuteChanged();
+                _ = LoadAutomationRunsAsync(value?.Id);
+            }
+        }
+    }
+
+    public AutomationRunListItemViewModel? SelectedAutomationRun
+    {
+        get => _selectedAutomationRun;
+        set => SetProperty(ref _selectedAutomationRun, value);
+    }
+
+    public string AutomationStatusMessage
+    {
+        get => _automationStatusMessage;
+        set => SetProperty(ref _automationStatusMessage, value);
+    }
     public bool IsAskMyVaultSelected => IsSelected("Ask My Vault");
 
     public DocumentListItemViewModel? SelectedDocument
@@ -624,6 +675,10 @@ public sealed class MainViewModel : ViewModelBase
     public string ArtifactEvidenceStatusMessage { get => _artifactEvidenceStatusMessage; set => SetProperty(ref _artifactEvidenceStatusMessage, value); }
     public bool CanCreateSnippet => SelectedDocument is not null;
 
+    public Task<IReadOnlyList<AgentTemplateRecord>> GetAgentTemplatesAsync(CancellationToken cancellationToken = default) => _agentService.GetAgentsAsync(cancellationToken);
+
+    public Task<IReadOnlyList<CompanyRecord>> GetCompaniesAsync(CancellationToken cancellationToken = default) => _companyService.GetCompaniesAsync(cancellationToken);
+
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
     {
         var fileList = filePaths.Where(static x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -677,6 +732,7 @@ public sealed class MainViewModel : ViewModelBase
         await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        await LoadAutomationsAsync();
     }
 
     private async Task EnsureAskMyVaultAgentAsync()
@@ -1680,6 +1736,94 @@ public sealed class MainViewModel : ViewModelBase
         AgentStatusMessage = "Artifact output saved.";
     }
 
+    private async Task LoadAutomationsAsync()
+    {
+        var records = await _automationService.GetAutomationsAsync();
+        Automations.Clear();
+        foreach (var record in records)
+        {
+            var schedule = string.Equals(record.ScheduleType, "daily", StringComparison.OrdinalIgnoreCase)
+                ? $"Daily {record.DailyTime}"
+                : $"Every {record.IntervalMinutes ?? 60} min";
+
+            Automations.Add(new AutomationListItemViewModel
+            {
+                Id = record.Id,
+                Name = record.Name,
+                Enabled = record.Enabled,
+                Schedule = schedule,
+                NextRun = FormatDate(record.NextRunAt),
+                LastRun = FormatDate(record.LastRunAt),
+                LastStatus = record.LastStatus ?? string.Empty
+            });
+        }
+
+        SelectedAutomation = Automations.FirstOrDefault();
+    }
+
+    private async Task LoadAutomationRunsAsync(string? automationId)
+    {
+        AutomationRuns.Clear();
+        if (string.IsNullOrWhiteSpace(automationId))
+        {
+            return;
+        }
+
+        var runs = await _automationService.GetRunsAsync(automationId);
+        foreach (var run in runs)
+        {
+            AutomationRuns.Add(new AutomationRunListItemViewModel
+            {
+                Id = run.Id,
+                TriggerType = run.TriggerType,
+                Status = run.Status,
+                StartedAt = FormatDate(run.StartedAt),
+                FinishedAt = FormatDate(run.FinishedAt)
+            });
+        }
+
+        SelectedAutomationRun = AutomationRuns.FirstOrDefault();
+    }
+
+    private async Task NewAutomationAsync()
+    {
+        AutomationRequested?.Invoke(this, new AutomationEditorRequestedEventArgs(null));
+        await Task.CompletedTask;
+    }
+
+    private async Task EditAutomationAsync()
+    {
+        if (SelectedAutomation is null)
+        {
+            return;
+        }
+
+        var records = await _automationService.GetAutomationsAsync();
+        var existing = records.FirstOrDefault(x => x.Id == SelectedAutomation.Id);
+        AutomationRequested?.Invoke(this, new AutomationEditorRequestedEventArgs(existing));
+    }
+
+    public event EventHandler<AutomationEditorRequestedEventArgs>? AutomationRequested;
+
+    public async Task SaveAutomationFromDialogAsync(AutomationRecord? existing, AutomationUpsertRequest request)
+    {
+        if (existing is null)
+        {
+            await _automationService.CreateAutomationAsync(request);
+            AutomationStatusMessage = "Automation created.";
+        }
+        else
+        {
+            await _automationService.UpdateAutomationAsync(existing.Id, request);
+            AutomationStatusMessage = "Automation updated.";
+        }
+
+        await LoadAutomationsAsync();
+    }
+
+    private async Task DeleteAutomationAsync()
+    {
+        if (SelectedAutomation is null)
     public IReadOnlyList<DocumentListItemViewModel> GetSuggestedDocumentsForSelectedArtifact()
     {
         var selectedRunCompanyId = SelectedAgentRun?.CompanyId;
@@ -1792,6 +1936,14 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        await _automationService.DeleteAutomationAsync(SelectedAutomation.Id);
+        AutomationStatusMessage = "Automation deleted.";
+        await LoadAutomationsAsync();
+    }
+
+    private async Task RunAutomationNowAsync()
+    {
+        if (SelectedAutomation is null)
         await _evidenceService.CreateEvidenceLinkAsync(SelectedRunArtifact.Id, snippetId, null, null, null, null);
         await RefreshArtifactEvidenceAsync();
         AgentStatusMessage = "Snippet linked to artifact.";
@@ -1804,6 +1956,15 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        await _automationService.RunNowAsync(SelectedAutomation.Id);
+        AutomationStatusMessage = "Automation run triggered.";
+        await LoadAutomationsAsync();
+        SelectedAutomation = Automations.FirstOrDefault(x => x.Id == SelectedAutomation?.Id) ?? Automations.FirstOrDefault();
+    }
+
+    private async Task ToggleAutomationEnabledAsync()
+    {
+        if (SelectedAutomation is null)
         await _evidenceService.DeleteEvidenceLinkAsync(evidenceLinkId);
         await RefreshArtifactEvidenceAsync();
         AgentStatusMessage = "Evidence link removed.";
@@ -1822,6 +1983,8 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        await _automationService.SetAutomationEnabledAsync(SelectedAutomation.Id, !SelectedAutomation.Enabled);
+        await LoadAutomationsAsync();
         SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
         SelectedDocument = match;
         DocumentStatusMessage = $"Opened document: {match.Title}";
@@ -1871,6 +2034,8 @@ public sealed class MainViewModel : ViewModelBase
     private bool IsSelected(string title) => string.Equals(SelectedItem.Title, title, StringComparison.OrdinalIgnoreCase);
 
     private static string? NullIfWhitespace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    public sealed record AutomationEditorRequestedEventArgs(AutomationRecord? ExistingAutomation);
 
     private static string FormatDate(string? dateString)
     {
