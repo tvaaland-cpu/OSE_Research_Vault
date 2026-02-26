@@ -242,6 +242,15 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
                  AND metric_key IS NOT NULL
                  AND TRIM(metric_key) <> ''
             ORDER BY metric_key",
+            @"SELECT metric_key
+                     || CASE WHEN COALESCE(period_label, '') = '' THEN '' ELSE ' (' || period_label || ')' END
+                     || ': '
+                     || COALESCE(CAST(metric_value AS TEXT), 'n/a')
+                     || CASE WHEN COALESCE(unit, '') = '' THEN '' ELSE ' ' || unit END
+                     || CASE WHEN COALESCE(currency, '') = '' THEN '' ELSE ' [' || currency || ']' END
+                FROM metric
+               WHERE company_id = @CompanyId
+            ORDER BY recorded_at DESC",
             new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         return rows.ToList();

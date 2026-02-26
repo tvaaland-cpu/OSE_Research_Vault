@@ -52,13 +52,16 @@ public partial class App : Application
         services.AddSingleton<IHealthRepository, HealthRepository>();
         services.AddSingleton<ISnippetRepository, SqliteSnippetRepository>();
         services.AddSingleton<IEvidenceLinkRepository, SqliteEvidenceLinkRepository>();
+        services.AddSingleton<IMetricRepository, SqliteMetricRepository>();
         services.AddSingleton<IEvidenceService, EvidenceService>();
+        services.AddSingleton<IMetricService, MetricService>();
         services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
         services.AddSingleton<IDocumentImportService, SqliteDocumentImportService>();
         services.AddSingleton<ICompanyService, SqliteCompanyService>();
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<IMetricService, SqliteMetricService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
 #if OPENAI_PROVIDER
