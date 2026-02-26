@@ -50,6 +50,17 @@ public partial class MainWindow
             IncludeEvidenceExcerpts = dialog.IncludeEvidenceExcerpts
         });
 
+        await _shareLogService.AddAsync(new ShareLogCreateRequest
+        {
+            WorkspaceId = string.Empty,
+            Action = "publish_memo",
+            TargetCompanyId = string.IsNullOrWhiteSpace(_viewModel.SelectedNote.CompanyId) ? null : _viewModel.SelectedNote.CompanyId,
+            ProfileId = selectedProfile?.ProfileId,
+            OutputPath = result.OutputFilePath,
+            Summary = _viewModel.SelectedNote.Title
+        });
+        await RefreshShareLogAsync();
+
         await _notificationService.AddNotification("info", "Memo published", $"Memo exported to {result.OutputFilePath}");
         MessageBox.Show(this, $"Published memo to:\n{result.OutputFilePath}", "Publish Memo", MessageBoxButton.OK, MessageBoxImage.Information);
     }

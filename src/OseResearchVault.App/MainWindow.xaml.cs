@@ -19,8 +19,9 @@ public partial class MainWindow : Window
     private readonly IInvestmentMemoService _investmentMemoService;
     private readonly IReviewService _reviewService;
     private readonly IBackupService _backupService;
+    private readonly IShareLogService _shareLogService;
 
-    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService, IShareLogService shareLogService)
     {
         _viewModel = viewModel;
         _exportService = exportService;
@@ -28,6 +29,7 @@ public partial class MainWindow : Window
         _investmentMemoService = investmentMemoService;
         _reviewService = reviewService;
         _backupService = backupService;
+        _shareLogService = shareLogService;
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
@@ -362,6 +364,16 @@ public partial class MainWindow : Window
 
         var targetFolder = Path.Combine(dialog.SelectedPath, $"research-pack-{_viewModel.SelectedHubCompany.DisplayName}-{DateTime.UtcNow:yyyyMMddHHmmss}");
         await _exportService.ExportCompanyResearchPackAsync(string.Empty, _viewModel.SelectedHubCompany.Id, targetFolder, redactionOptions);
+        await _shareLogService.AddAsync(new ShareLogCreateRequest
+        {
+            WorkspaceId = string.Empty,
+            Action = "export_pack",
+            TargetCompanyId = _viewModel.SelectedHubCompany.Id,
+            ProfileId = selectedProfile?.ProfileId,
+            OutputPath = targetFolder,
+            Summary = $"Research pack for {_viewModel.SelectedHubCompany.DisplayName}"
+        });
+        await RefreshShareLogAsync();
         await _notificationService.AddNotification("info", "Research pack exported", $"Research pack saved to: {targetFolder}");
         MessageBox.Show(this, $"Research pack exported to:
 {targetFolder}", "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -387,6 +399,14 @@ public partial class MainWindow : Window
             WorkspaceBackupStatusText.Text = "Exporting workspace backup...";
 
             await _backupService.ExportWorkspaceBackupAsync(string.Empty, dialog.FileName);
+            await _shareLogService.AddAsync(new ShareLogCreateRequest
+            {
+                WorkspaceId = string.Empty,
+                Action = "backup_export",
+                OutputPath = dialog.FileName,
+                Summary = "Workspace backup export"
+            });
+            await RefreshShareLogAsync();
             await _notificationService.AddNotification("info", "Workspace backup exported", $"Backup saved to: {dialog.FileName}");
 
             WorkspaceBackupStatusText.Text = $"Backup exported to {dialog.FileName}";
