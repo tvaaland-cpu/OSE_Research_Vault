@@ -52,7 +52,9 @@ public partial class App : Application
         services.AddSingleton<IHealthRepository, HealthRepository>();
         services.AddSingleton<ISnippetRepository, SqliteSnippetRepository>();
         services.AddSingleton<IEvidenceLinkRepository, SqliteEvidenceLinkRepository>();
+        services.AddSingleton<IMetricRepository, SqliteMetricRepository>();
         services.AddSingleton<IEvidenceService, EvidenceService>();
+        services.AddSingleton<IMetricService, MetricService>();
         services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
         services.AddSingleton<IDocumentImportService, SqliteDocumentImportService>();
         services.AddSingleton<ICompanyService, SqliteCompanyService>();
@@ -76,6 +78,7 @@ public partial class App : Application
         services.AddSingleton<ILLMProvider>(sp => sp.GetRequiredService<GeminiLlmProvider>());
 #endif
         services.AddSingleton<ILLMProviderFactory, LlmProviderFactory>();
+        services.AddSingleton<IUserDialogService, MessageBoxDialogService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
