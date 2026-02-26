@@ -99,6 +99,7 @@ public partial class App : Application
         services.AddSingleton<IAutomationExecutor, AutomationExecutor>();
         services.AddSingleton<IAutomationScheduler, AutomationScheduler>();
         services.AddSingleton<IPromptBuilder, AskVaultPromptBuilder>();
+        services.AddSingleton<IInvestmentMemoService, InvestmentMemoService>();
         services.AddSingleton<IUserDialogService, MessageBoxDialogService>();
 
         services.AddSingleton<MainViewModel>();

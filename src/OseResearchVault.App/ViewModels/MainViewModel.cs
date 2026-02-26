@@ -117,6 +117,7 @@ public sealed class MainViewModel : ViewModelBase
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService, IMetricConflictDialogService metricConflictDialogService)
     private string _evidenceCoverageLabel = "0 evidence links";
     private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
+    private string _investmentMemoStatusMessage = string.Empty;
     private string _selectedDocumentWorkspaceId = string.Empty;
     private CompanyMetricListItemViewModel? _selectedHubMetric;
     private string _selectedMetricNameFilter = "All";
@@ -357,6 +358,13 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsAgentsSelected => IsSelected("Agents");
     public bool IsDataQualitySelected => IsSelected("Data Quality");
     public bool IsAutomationsSelected => IsSelected("Automations");
+
+    public string InvestmentMemoStatusMessage
+    {
+        get => _investmentMemoStatusMessage;
+        set => SetProperty(ref _investmentMemoStatusMessage, value);
+    }
+
     public bool IsSettingsSelected => IsSelected("Settings");
     public bool IsInboxSelected => IsSelected("Inbox");
     public bool IsAutomationsSelected => IsSelected("Automations");
@@ -2439,6 +2447,13 @@ public sealed class MainViewModel : ViewModelBase
         SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Agents", StringComparison.OrdinalIgnoreCase));
         SelectedRunArtifact = RunArtifacts.FirstOrDefault(a => a.Id == SelectedEvidenceGap.ArtifactId);
         AgentStatusMessage = $"Evidence gap artifact selected: {SelectedEvidenceGap.Title}";
+    }
+
+    public async Task RefreshAfterInvestmentMemoAsync(string companyId)
+    {
+        await LoadNotesAsync();
+        await LoadCompanyHubAsync(companyId);
+        InvestmentMemoStatusMessage = "Investment memo created.";
     }
 
     private static string StripHighlight(string value) => value.Replace("<mark>", string.Empty, StringComparison.OrdinalIgnoreCase)

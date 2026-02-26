@@ -619,6 +619,10 @@
                 <TextBlock Text="Company Hub" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <ComboBox Width="360" Margin="16,0,0,0" ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedHubCompany}" DisplayMemberPath="DisplayName"/>
                 <Button Content="Export Research Pack…" Margin="8,0,0,0" Click="ExportResearchPack_OnClick"/>
+                <Button Content="Generate Investment Memo…" Margin="8,0,0,0" Click="GenerateInvestmentMemo_OnClick"/>
+                <Border Margin="8,0,0,0" Padding="6,2" Background="#FFFEEBC8" CornerRadius="4">
+                    <TextBlock Text="{Binding InvestmentMemoStatusMessage}" Foreground="#FF744210"/>
+                </Border>
             </StackPanel>
             <TabControl Grid.Row="1">
                 <TabItem Header="Overview"><TextBlock Padding="12" Text="Company intelligence overview."/></TabItem>
