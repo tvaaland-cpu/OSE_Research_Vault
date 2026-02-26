@@ -331,8 +331,37 @@ public partial class MainWindow : Window
             return;
         }
 
+        var profiles = await _exportService.GetExportProfilesAsync(string.Empty);
+        var exportOptionsDialog = new ExportResearchPackDialog(profiles)
+        {
+            Owner = this
+        };
+
+        if (exportOptionsDialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var selectedProfile = profiles.FirstOrDefault(p => p.ProfileId == exportOptionsDialog.SelectedProfileId);
+        var redactionOptions = selectedProfile?.Options ?? new RedactionOptions();
+        if (!exportOptionsDialog.ApplyRedaction)
+        {
+            redactionOptions = new RedactionOptions
+            {
+                MaskEmails = false,
+                MaskPhones = false,
+                MaskPaths = false,
+                MaskSecrets = false,
+                ExcludePrivateTaggedItems = exportOptionsDialog.ExcludePrivateTaggedItems
+            };
+        }
+        else
+        {
+            redactionOptions.ExcludePrivateTaggedItems = exportOptionsDialog.ExcludePrivateTaggedItems;
+        }
+
         var targetFolder = Path.Combine(dialog.SelectedPath, $"research-pack-{_viewModel.SelectedHubCompany.DisplayName}-{DateTime.UtcNow:yyyyMMddHHmmss}");
-        await _exportService.ExportCompanyResearchPackAsync(string.Empty, _viewModel.SelectedHubCompany.Id, targetFolder, ReadRedactionOptionsFromForm());
+        await _exportService.ExportCompanyResearchPackAsync(string.Empty, _viewModel.SelectedHubCompany.Id, targetFolder, redactionOptions);
         await _notificationService.AddNotification("info", "Research pack exported", $"Research pack saved to: {targetFolder}");
         MessageBox.Show(this, $"Research pack exported to:
 {targetFolder}", "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
