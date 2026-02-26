@@ -264,6 +264,7 @@
                                 <TextBox Text="{Binding AgentAllowedTools}" Margin="0,0,0,6" ToolTip="allowed_tools JSON list"/>
                                 <TextBox Text="{Binding AgentOutputSchema}" AcceptsReturn="True" Height="60" Margin="0,0,0,6" ToolTip="output_schema"/>
                                 <TextBox Text="{Binding AgentEvidencePolicy}" Margin="0,0,0,6" ToolTip="evidence_policy"/>
+                                <ComboBox ItemsSource="{Binding ModelProfiles}" SelectedItem="{Binding SelectedAgentModelProfile}" DisplayMemberPath="Name" Margin="0,0,0,6" ToolTip="model profile"/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="New" Command="{Binding NewAgentTemplateCommand}"/>
                                     <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveAgentTemplateCommand}"/>
@@ -868,7 +869,32 @@
                         <Button Content="Save Inbox Settings" Width="160" Command="{Binding SaveImportInboxSettingsCommand}"/>
                     </StackPanel>
                 </GroupBox>
-                <GroupBox Header="Export Profiles" Padding="12" Margin="0,12,0,0">
+                                <GroupBox Header="Model Profiles" Padding="12" Margin="0,12,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <DataGrid Grid.Column="0" ItemsSource="{Binding ModelProfiles}" SelectedItem="{Binding SelectedModelProfile}" AutoGenerateColumns="False" IsReadOnly="True" Height="150">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                                <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="Auto"/>
+                                <DataGridCheckBoxColumn Header="Default" Binding="{Binding IsDefault}" Width="Auto"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBox Text="{Binding ModelProfileName}" Margin="0,0,0,6" ToolTip="Profile name"/>
+                            <TextBox Text="{Binding ModelProfileProvider}" Margin="0,0,0,6" ToolTip="Provider"/>
+                            <TextBox Text="{Binding ModelProfileModel}" Margin="0,0,0,6" ToolTip="Model"/>
+                            <TextBox Text="{Binding ModelProfileParametersJson}" Margin="0,0,0,6" ToolTip="parameters JSON" AcceptsReturn="True" Height="52"/>
+                            <CheckBox Content="Workspace default" IsChecked="{Binding ModelProfileIsDefault}" Margin="0,0,0,6"/>
+                            <WrapPanel>
+                                <Button Content="New" Command="{Binding NewModelProfileCommand}"/>
+                                <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveModelProfileCommand}"/>
+                                <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteModelProfileCommand}"/>
+                                <Button Content="Set Default" Margin="8,0,0,0" Command="{Binding SetDefaultModelProfileCommand}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Grid>
+                </GroupBox>
+<GroupBox Header="Export Profiles" Padding="12" Margin="0,12,0,0">
                     <StackPanel>
                         <ListBox x:Name="ExportProfilesListBox" Height="120" DisplayMemberPath="Name" SelectionChanged="ExportProfilesListBox_OnSelectionChanged"/>
                         <TextBlock Text="Profile name" Margin="0,8,0,4"/>

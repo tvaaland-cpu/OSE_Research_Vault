@@ -10,6 +10,7 @@ public sealed class AgentRunRecord
     public string? CompanyName { get; init; }
     public string Query { get; init; } = string.Empty;
     public string SelectedDocumentIdsJson { get; init; } = "[]";
+    public string? ModelProfileId { get; init; }
     public string ModelProvider { get; init; } = string.Empty;
     public string ModelName { get; init; } = string.Empty;
     public string ModelParametersJson { get; init; } = "{}";

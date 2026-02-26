@@ -38,8 +38,8 @@ public sealed class DatabaseSchemaSmokeTests
             {
                 "schema_migrations",
                 "workspace", "company", "position", "watchlist_item", "source", "document", "document_text",
-                "note", "snippet", "agent", "agent_run", "tool_call", "artifact", "notification", "evidence_link", "tag",
-                "note", "snippet", "agent", "agent_run", "tool_call", "artifact", "evidence_link", "automation", "automation_run", "tag",
+                "note", "snippet", "agent", "agent_run", "tool_call", "artifact", "notification", "evidence_link", "tag", "model_profile",
+                "note", "snippet", "agent", "agent_run", "tool_call", "artifact", "evidence_link", "automation", "automation_run", "tag", "model_profile",
                 "note_tag", "snippet_tag", "artifact_tag", "document_tag", "company_tag", "event", "metric", "trade",
                 "automation", "automation_run",
                 "price_daily", "thesis_version", "scenario", "scenario_kpi", "journal_entry", "journal_trade", "journal_snippet", "share_log", "note_fts", "snippet_fts", "artifact_fts", "document_text_fts"

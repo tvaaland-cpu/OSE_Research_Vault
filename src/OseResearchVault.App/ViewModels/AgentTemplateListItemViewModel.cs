@@ -6,4 +6,5 @@ public sealed class AgentTemplateListItemViewModel
     public string Name { get; init; } = string.Empty;
     public string Goal { get; init; } = string.Empty;
     public string EvidencePolicy { get; init; } = string.Empty;
+    public string ModelProfileId { get; init; } = string.Empty;
 }

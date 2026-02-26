@@ -8,4 +8,5 @@ public sealed class AgentTemplateUpsertRequest
     public string? AllowedToolsJson { get; init; }
     public string? OutputSchema { get; init; }
     public string? EvidencePolicy { get; init; }
+    public string? ModelProfileId { get; init; }
 }

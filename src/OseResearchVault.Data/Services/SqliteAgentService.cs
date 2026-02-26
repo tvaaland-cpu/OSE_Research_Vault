@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
@@ -15,6 +14,118 @@ public sealed class SqliteAgentService(
 {
     private static readonly Regex SnippetCitationRegex = new(@"\[SNIP:(?<id>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DocumentCitationRegex = new(@"\[DOC:(?<documentId>[^\]|]+)\|chunk:(?<chunkIndex>\d+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    public async Task<IReadOnlyList<ModelProfileRecord>> GetModelProfilesAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<ModelProfileRecord>(new CommandDefinition(
+            @"SELECT model_profile_id AS ModelProfileId,
+                     workspace_id AS WorkspaceId,
+                     name,
+                     provider,
+                     model,
+                     parameters_json AS ParametersJson,
+                     created_at AS CreatedAt,
+                     updated_at AS UpdatedAt,
+                     is_default AS IsDefault
+                FROM model_profile
+               WHERE workspace_id = @WorkspaceId
+            ORDER BY is_default DESC, name",
+            new { WorkspaceId = workspaceId }, cancellationToken: cancellationToken));
+
+        return rows.ToList();
+    }
+
+    public async Task<string> CreateModelProfileAsync(ModelProfileUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var modelProfileId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow.ToString("O");
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+
+        if (request.IsDefault)
+        {
+            await ClearDefaultModelProfileAsync(connection, tx, workspaceId, cancellationToken);
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO model_profile (model_profile_id, workspace_id, name, provider, model, parameters_json, created_at, updated_at, is_default)
+              VALUES (@ModelProfileId, @WorkspaceId, @Name, @Provider, @Model, @ParametersJson, @Now, @Now, @IsDefault)",
+            new { ModelProfileId = modelProfileId, WorkspaceId = workspaceId, Name = request.Name.Trim(), Provider = request.Provider.Trim(), Model = request.Model.Trim(), ParametersJson = ValidateJsonObject(request.ParametersJson), Now = now, IsDefault = request.IsDefault ? 1 : 0 },
+            tx,
+            cancellationToken: cancellationToken));
+
+        await tx.CommitAsync(cancellationToken);
+        return modelProfileId;
+    }
+
+    public async Task UpdateModelProfileAsync(string modelProfileId, ModelProfileUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+
+        if (request.IsDefault)
+        {
+            await ClearDefaultModelProfileAsync(connection, tx, workspaceId, cancellationToken);
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE model_profile
+                 SET name = @Name,
+                     provider = @Provider,
+                     model = @Model,
+                     parameters_json = @ParametersJson,
+                     is_default = @IsDefault,
+                     updated_at = @Now
+               WHERE model_profile_id = @ModelProfileId",
+            new { ModelProfileId = modelProfileId, Name = request.Name.Trim(), Provider = request.Provider.Trim(), Model = request.Model.Trim(), ParametersJson = ValidateJsonObject(request.ParametersJson), IsDefault = request.IsDefault ? 1 : 0, Now = now },
+            tx,
+            cancellationToken: cancellationToken));
+
+        await tx.CommitAsync(cancellationToken);
+    }
+
+    public async Task DeleteModelProfileAsync(string modelProfileId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM model_profile WHERE model_profile_id = @ModelProfileId", new { ModelProfileId = modelProfileId }, cancellationToken: cancellationToken));
+    }
+
+    public async Task SetDefaultModelProfileAsync(string modelProfileId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+
+        await ClearDefaultModelProfileAsync(connection, tx, workspaceId, cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE model_profile
+                 SET is_default = 1,
+                     updated_at = @Now
+               WHERE model_profile_id = @ModelProfileId",
+            new { ModelProfileId = modelProfileId, Now = DateTime.UtcNow.ToString("O") }, tx, cancellationToken: cancellationToken));
+
+        await tx.CommitAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<AgentTemplateRecord>> GetAgentsAsync(CancellationToken cancellationToken = default)
     {
@@ -30,6 +141,7 @@ public sealed class SqliteAgentService(
                      COALESCE(allowed_tools_json, '[]') AS AllowedToolsJson,
                      COALESCE(output_schema, '') AS OutputSchema,
                      COALESCE(evidence_policy, '') AS EvidencePolicy,
+                     model_profile_id AS ModelProfileId,
                      created_at AS CreatedAt
                 FROM agent
             ORDER BY created_at DESC", cancellationToken: cancellationToken));
@@ -48,8 +160,8 @@ public sealed class SqliteAgentService(
         await connection.OpenAsync(cancellationToken);
 
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO agent (id, workspace_id, name, goal, instructions, allowed_tools_json, output_schema, evidence_policy, created_at, updated_at)
-              VALUES (@Id, @WorkspaceId, @Name, @Goal, @Instructions, @AllowedToolsJson, @OutputSchema, @EvidencePolicy, @Now, @Now)",
+            @"INSERT INTO agent (id, workspace_id, name, goal, instructions, allowed_tools_json, output_schema, evidence_policy, model_profile_id, created_at, updated_at)
+              VALUES (@Id, @WorkspaceId, @Name, @Goal, @Instructions, @AllowedToolsJson, @OutputSchema, @EvidencePolicy, @ModelProfileId, @Now, @Now)",
             new
             {
                 Id = agentId,
@@ -60,6 +172,7 @@ public sealed class SqliteAgentService(
                 AllowedToolsJson = ValidateJsonList(request.AllowedToolsJson),
                 OutputSchema = Clean(request.OutputSchema),
                 EvidencePolicy = Clean(request.EvidencePolicy),
+                ModelProfileId = Clean(request.ModelProfileId),
                 Now = now
             }, cancellationToken: cancellationToken));
 
@@ -81,6 +194,7 @@ public sealed class SqliteAgentService(
                      allowed_tools_json = @AllowedToolsJson,
                      output_schema = @OutputSchema,
                      evidence_policy = @EvidencePolicy,
+                     model_profile_id = @ModelProfileId,
                      updated_at = @Now
                WHERE id = @Id",
             new
@@ -92,6 +206,7 @@ public sealed class SqliteAgentService(
                 AllowedToolsJson = ValidateJsonList(request.AllowedToolsJson),
                 OutputSchema = Clean(request.OutputSchema),
                 EvidencePolicy = Clean(request.EvidencePolicy),
+                ModelProfileId = Clean(request.ModelProfileId),
                 Now = DateTime.UtcNow.ToString("O")
             }, cancellationToken: cancellationToken));
     }
@@ -112,6 +227,7 @@ public sealed class SqliteAgentService(
                      c.name AS CompanyName,
                      COALESCE(ar.query_text, '') AS Query,
                      COALESCE(ar.selected_document_ids_json, '[]') AS SelectedDocumentIdsJson,
+                     ar.model_profile_id AS ModelProfileId,
                      COALESCE(ar.model_provider, '') AS ModelProvider,
                      COALESCE(ar.model_name, '') AS ModelName,
                      COALESCE(ar.model_parameters_json, '{}') AS ModelParametersJson,
@@ -135,8 +251,6 @@ public sealed class SqliteAgentService(
         var now = DateTime.UtcNow.ToString("O");
         var runId = Guid.NewGuid().ToString();
         var artifactId = Guid.NewGuid().ToString();
-        var generationSettings = settings.DefaultLlmSettings;
-
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
 
@@ -148,10 +262,14 @@ public sealed class SqliteAgentService(
                      COALESCE(allowed_tools_json, '[]') AS AllowedToolsJson,
                      COALESCE(output_schema, '') AS OutputSchema,
                      COALESCE(evidence_policy, '') AS EvidencePolicy,
+                     model_profile_id AS ModelProfileId,
                      created_at AS CreatedAt
                 FROM agent
                WHERE id = @Id",
             new { Id = request.AgentId }, cancellationToken: cancellationToken));
+
+        var resolved = await ResolveGenerationSettingsAsync(connection, workspaceId, request.ModelProfileId ?? agent.ModelProfileId, settings.DefaultLlmSettings, cancellationToken);
+        var generationSettings = resolved.GenerationSettings;
 
         var selectedChunks = await RetrieveRelevantChunksAsync(connection, request, generationSettings.TopDocumentChunks, cancellationToken);
         var promptBuildResult = BuildPrompt(agent, request.Query ?? string.Empty, selectedChunks);
@@ -161,8 +279,8 @@ public sealed class SqliteAgentService(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO agent_run (id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_provider, model_name, model_parameters_json, started_at, finished_at)
-              VALUES (@Id, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
+            @"INSERT INTO agent_run (id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_profile_id, model_provider, model_name, model_parameters_json, started_at, finished_at)
+              VALUES (@Id, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProfileId, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
             new
             {
                 Id = runId,
@@ -171,6 +289,7 @@ public sealed class SqliteAgentService(
                 CompanyId = Clean(request.CompanyId),
                 Query = Clean(request.Query),
                 SelectedDocumentIdsJson = JsonSerializer.Serialize(request.SelectedDocumentIds.Distinct()),
+                ModelProfileId = resolved.ModelProfileId,
                 ModelProvider = generationSettings.Provider,
                 ModelName = generationSettings.Model,
                 ModelParametersJson = JsonSerializer.Serialize(new { generationSettings.Temperature, generationSettings.MaxTokens, generationSettings.TopDocumentChunks }),
@@ -307,15 +426,17 @@ public sealed class SqliteAgentService(
             new { RunId = runId }, cancellationToken: cancellationToken));
 
         return rows.ToList();
+    }
+
     public async Task<AskMyVaultResult> ExecuteAskMyVaultAsync(AskMyVaultRequest request, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
         var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
         var now = DateTime.UtcNow.ToString("O");
-        var generationSettings = settings.DefaultLlmSettings;
-
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
+        var resolved = await ResolveGenerationSettingsAsync(connection, workspaceId, request.ModelProfileId, settings.DefaultLlmSettings, cancellationToken);
+        var generationSettings = resolved.GenerationSettings;
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         var askAgentId = await EnsureAskMyVaultAgentAsync(connection, workspaceId, now, cancellationToken);
@@ -327,8 +448,8 @@ public sealed class SqliteAgentService(
         var runId = Guid.NewGuid().ToString();
         var artifactId = Guid.NewGuid().ToString();
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO agent_run (id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_provider, model_name, model_parameters_json, started_at, finished_at)
-              VALUES (@Id, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
+            @"INSERT INTO agent_run (id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_profile_id, model_provider, model_name, model_parameters_json, started_at, finished_at)
+              VALUES (@Id, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProfileId, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
             new
             {
                 Id = runId,
@@ -337,6 +458,7 @@ public sealed class SqliteAgentService(
                 CompanyId = Clean(request.CompanyId),
                 Query = Clean(request.Query),
                 SelectedDocumentIdsJson = JsonSerializer.Serialize(request.SelectedDocumentIds.Distinct()),
+                ModelProfileId = resolved.ModelProfileId,
                 ModelProvider = generationSettings.Provider,
                 ModelName = generationSettings.Model,
                 ModelParametersJson = JsonSerializer.Serialize(new { generationSettings.Temperature, generationSettings.MaxTokens, generationSettings.TopDocumentChunks }),
@@ -416,27 +538,6 @@ public sealed class SqliteAgentService(
                      COALESCE(content, '') AS Content,
                      created_at AS CreatedAt
                 FROM artifact
-               WHERE agent_run_id = @RunId
-            ORDER BY created_at",
-            new { RunId = runId }, cancellationToken: cancellationToken));
-
-        return rows.ToList();
-    }
-
-    public async Task<IReadOnlyList<AgentToolCallRecord>> GetToolCallsAsync(string runId, CancellationToken cancellationToken = default)
-    {
-        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
-        await using var connection = OpenConnection(settings.DatabaseFilePath);
-        await connection.OpenAsync(cancellationToken);
-
-        var rows = await connection.QueryAsync<AgentToolCallRecord>(new CommandDefinition(
-            @"SELECT id,
-                     name,
-                     COALESCE(arguments_json, '{}') AS ArgumentsJson,
-                     COALESCE(output_json, '{}') AS OutputJson,
-                     status,
-                     created_at AS CreatedAt
-                FROM tool_call
                WHERE agent_run_id = @RunId
             ORDER BY created_at",
             new { RunId = runId }, cancellationToken: cancellationToken));
@@ -854,6 +955,90 @@ public sealed class SqliteAgentService(
         }
 
         return total;
+    }
+
+    private static async Task ClearDefaultModelProfileAsync(SqliteConnection connection, SqliteTransaction transaction, string workspaceId, CancellationToken cancellationToken)
+    {
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE model_profile
+                 SET is_default = 0,
+                     updated_at = @Now
+               WHERE workspace_id = @WorkspaceId
+                 AND is_default = 1",
+            new { WorkspaceId = workspaceId, Now = DateTime.UtcNow.ToString("O") },
+            transaction,
+            cancellationToken: cancellationToken));
+    }
+
+    private static string ValidateJsonObject(string? json)
+    {
+        var candidate = string.IsNullOrWhiteSpace(json) ? "{}" : json.Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(candidate);
+            return doc.RootElement.ValueKind == JsonValueKind.Object ? candidate : "{}";
+        }
+        catch
+        {
+            return "{}";
+        }
+    }
+
+    private static async Task<(string? ModelProfileId, LlmGenerationSettings GenerationSettings)> ResolveGenerationSettingsAsync(SqliteConnection connection, string workspaceId, string? requestedProfileId, LlmGenerationSettings defaults, CancellationToken cancellationToken)
+    {
+        var profile = await connection.QueryFirstOrDefaultAsync<ModelProfileRecord>(new CommandDefinition(
+            @"SELECT model_profile_id AS ModelProfileId,
+                     provider,
+                     model,
+                     parameters_json AS ParametersJson
+                FROM model_profile
+               WHERE workspace_id = @WorkspaceId
+                 AND (@RequestedProfileId IS NULL OR model_profile_id = @RequestedProfileId)
+            ORDER BY CASE WHEN model_profile_id = @RequestedProfileId THEN 0 ELSE 1 END,
+                     is_default DESC
+               LIMIT 1",
+            new { WorkspaceId = workspaceId, RequestedProfileId = Clean(requestedProfileId) }, cancellationToken: cancellationToken));
+
+        if (profile is null)
+        {
+            return (null, defaults);
+        }
+
+        var temperature = defaults.Temperature;
+        var maxTokens = defaults.MaxTokens;
+        var topChunks = defaults.TopDocumentChunks;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(profile.ParametersJson);
+            if (doc.RootElement.TryGetProperty("temperature", out var temperatureElement) && temperatureElement.TryGetDouble(out var tempValue))
+            {
+                temperature = tempValue;
+            }
+
+            if (doc.RootElement.TryGetProperty("max_tokens", out var maxTokensElement) && maxTokensElement.TryGetInt32(out var maxTokensValue))
+            {
+                maxTokens = maxTokensValue;
+            }
+
+            if (doc.RootElement.TryGetProperty("top_document_chunks", out var topChunksElement) && topChunksElement.TryGetInt32(out var topChunksValue))
+            {
+                topChunks = topChunksValue;
+            }
+        }
+        catch
+        {
+        }
+
+        return (profile.ModelProfileId, new LlmGenerationSettings
+        {
+            Provider = profile.Provider,
+            Model = profile.Model,
+            Temperature = temperature,
+            MaxTokens = maxTokens,
+            TopDocumentChunks = topChunks,
+            ApiKeySecretName = defaults.ApiKeySecretName
+        });
     }
 
     private static string ValidateJsonList(string? json)
