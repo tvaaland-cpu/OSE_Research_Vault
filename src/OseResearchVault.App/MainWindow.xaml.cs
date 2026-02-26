@@ -1,9 +1,11 @@
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using OseResearchVault.Core.Interfaces;
 using Forms = System.Windows.Forms;
+using Microsoft.Win32;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Models;
 
@@ -15,13 +17,15 @@ public partial class MainWindow : Window
     private readonly IExportService _exportService;
     private readonly INotificationService _notificationService;
     private readonly IInvestmentMemoService _investmentMemoService;
+    private readonly IBackupService _backupService;
 
-    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IBackupService backupService)
     {
         _viewModel = viewModel;
         _exportService = exportService;
         _notificationService = notificationService;
         _investmentMemoService = investmentMemoService;
+        _backupService = backupService;
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
@@ -293,4 +297,43 @@ public partial class MainWindow : Window
         MessageBox.Show(this, $"Research pack exported to:
 {targetFolder}", "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
     }
+    private async void ExportWorkspaceBackup_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "Zip archive (*.zip)|*.zip",
+            FileName = $"workspace-backup-{DateTime.UtcNow:yyyyMMddHHmmss}.zip",
+            DefaultExt = ".zip",
+            AddExtension = true
+        };
+
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        try
+        {
+            WorkspaceBackupProgress.Visibility = Visibility.Visible;
+            WorkspaceBackupStatusText.Text = "Exporting workspace backup...";
+
+            await _backupService.ExportWorkspaceBackupAsync(string.Empty, dialog.FileName);
+            await _notificationService.AddNotification("info", "Workspace backup exported", $"Backup saved to: {dialog.FileName}");
+
+            WorkspaceBackupStatusText.Text = $"Backup exported to {dialog.FileName}";
+            MessageBox.Show(this, $"Workspace backup exported to:
+{dialog.FileName}", "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            WorkspaceBackupStatusText.Text = "Backup export failed.";
+            MessageBox.Show(this, $"Failed to export workspace backup:
+{ex.Message}", "Export failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            WorkspaceBackupProgress.Visibility = Visibility.Collapsed;
+        }
+    }
+
 }

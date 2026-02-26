@@ -707,6 +707,13 @@
                         <Button Content="Save Inbox Settings" Width="160" Command="{Binding SaveImportInboxSettingsCommand}"/>
                     </StackPanel>
                 </GroupBox>
+                <GroupBox Header="Workspace" Padding="12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <Button Content="Export backup…" Width="160" Click="ExportWorkspaceBackup_OnClick"/>
+                        <ProgressBar x:Name="WorkspaceBackupProgress" IsIndeterminate="True" Height="8" Margin="0,10,0,0" Visibility="Collapsed"/>
+                        <TextBlock x:Name="WorkspaceBackupStatusText" Margin="0,8,0,0" Foreground="#FF4A5568"/>
+                    </StackPanel>
+                </GroupBox>
             </StackPanel>
         </Grid>
 
