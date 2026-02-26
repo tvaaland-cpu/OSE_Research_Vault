@@ -60,6 +60,7 @@ public partial class App : Application
         services.AddSingleton<ICompanyService, SqliteCompanyService>();
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
+        services.AddSingleton<IAskMyVaultService, AskMyVaultService>();
         services.AddSingleton<IRetrievalService, SqliteRetrievalService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
         services.AddSingleton<IMetricService, SqliteMetricService>();

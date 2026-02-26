@@ -15,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IAskMyVaultService _askMyVaultService;
     private readonly IMetricService _metricService;
     private readonly IMetricConflictDialogService _metricConflictDialogService;
     private readonly IUserDialogService _dialogService;
@@ -52,6 +53,11 @@ public sealed class MainViewModel : ViewModelBase
     private DateTime? _searchDateTo;
     private SearchResultListItemViewModel? _selectedSearchResult;
     private string _searchStatusMessage = "Search notes, documents, snippets, and artifacts.";
+    private string _askVaultQuery = string.Empty;
+    private CompanyOptionViewModel? _selectedAskVaultCompany;
+    private AskVaultContextItemViewModel? _selectedAskVaultContextItem;
+    private string _askVaultPrompt = string.Empty;
+    private string _askVaultStatusMessage = "Preview retrieval context and prompt before running an LLM.";
     private AgentTemplateListItemViewModel? _selectedAgentTemplate;
     private AgentRunListItemViewModel? _selectedAgentRun;
     private ArtifactListItemViewModel? _selectedRunArtifact;
@@ -74,6 +80,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
 
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAskMyVaultService askMyVaultService)
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService, IMetricConflictDialogService metricConflictDialogService)
     private string _evidenceCoverageLabel = "0 evidence links";
     private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
@@ -97,6 +104,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _askMyVaultService = askMyVaultService;
         _metricService = metricService;
         _metricConflictDialogService = metricConflictDialogService;
         _dialogService = dialogService;
@@ -111,6 +119,7 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Documents"),
             new NavigationItem("Notes"),
             new NavigationItem("Agents"),
+            new NavigationItem("Ask My Vault"),
             new NavigationItem("Search"),
             new NavigationItem("Settings")
         ];
@@ -132,6 +141,7 @@ public sealed class MainViewModel : ViewModelBase
         MetricNameOptions = ["All"];
         HubAgentRuns = [];
         SearchResults = [];
+        AskVaultContextItems = [];
         WorkspaceOptions = [];
         AgentTemplates = [];
         AgentRuns = [];
@@ -152,6 +162,8 @@ public sealed class MainViewModel : ViewModelBase
         NewNoteCommand = new RelayCommand(ClearNoteForm);
         ExecuteSearchCommand = new RelayCommand(() => _ = ExecuteSearchAsync(), () => !string.IsNullOrWhiteSpace(SearchQuery));
         OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
+        RetrieveAskVaultCommand = new RelayCommand(() => _ = RetrieveAskVaultPreviewAsync(), () => !string.IsNullOrWhiteSpace(AskVaultQuery));
+        OpenAskVaultContextItemCommand = new RelayCommand(() => OpenAskVaultContextItem(SelectedAskVaultContextItem), () => SelectedAskVaultContextItem is not null);
         SaveAgentTemplateCommand = new RelayCommand(() => _ = SaveAgentTemplateAsync(), () => !string.IsNullOrWhiteSpace(AgentName));
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
@@ -181,6 +193,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> MetricNameOptions { get; }
     public ObservableCollection<string> HubAgentRuns { get; }
     public ObservableCollection<SearchResultListItemViewModel> SearchResults { get; }
+    public ObservableCollection<AskVaultContextItemViewModel> AskVaultContextItems { get; }
     public ObservableCollection<WorkspaceOptionViewModel> WorkspaceOptions { get; }
     public ObservableCollection<AgentTemplateListItemViewModel> AgentTemplates { get; }
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
@@ -203,6 +216,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewNoteCommand { get; }
     public RelayCommand ExecuteSearchCommand { get; }
     public RelayCommand OpenSearchResultCommand { get; }
+    public RelayCommand RetrieveAskVaultCommand { get; }
+    public RelayCommand OpenAskVaultContextItemCommand { get; }
     public RelayCommand SaveAgentTemplateCommand { get; }
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
@@ -225,6 +240,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsAskMyVaultSelected));
             }
         }
     }
@@ -235,6 +251,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsAskMyVaultSelected => IsSelected("Ask My Vault");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -502,6 +519,39 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public string AskVaultQuery
+    {
+        get => _askVaultQuery;
+        set
+        {
+            if (SetProperty(ref _askVaultQuery, value))
+            {
+                RetrieveAskVaultCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public CompanyOptionViewModel? SelectedAskVaultCompany
+    {
+        get => _selectedAskVaultCompany;
+        set => SetProperty(ref _selectedAskVaultCompany, value);
+    }
+
+    public AskVaultContextItemViewModel? SelectedAskVaultContextItem
+    {
+        get => _selectedAskVaultContextItem;
+        set
+        {
+            if (SetProperty(ref _selectedAskVaultContextItem, value))
+            {
+                OpenAskVaultContextItemCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string AskVaultPrompt { get => _askVaultPrompt; set => SetProperty(ref _askVaultPrompt, value); }
+    public string AskVaultStatusMessage { get => _askVaultStatusMessage; set => SetProperty(ref _askVaultStatusMessage, value); }
+
 
     public AgentTemplateListItemViewModel? SelectedAgentTemplate
     {
@@ -666,6 +716,7 @@ public sealed class MainViewModel : ViewModelBase
         NotesFilterCompany ??= NoteFilterCompanies.First();
 
         SelectedSearchCompany ??= NoteFilterCompanies.First();
+        SelectedAskVaultCompany ??= NoteFilterCompanies.FirstOrDefault();
 
         AvailableTags.Clear();
         foreach (var tag in tags)
@@ -674,6 +725,86 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         SelectedHubCompany ??= CompanyOptions.FirstOrDefault();
+    }
+
+    private async Task RetrieveAskVaultPreviewAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AskVaultQuery))
+        {
+            return;
+        }
+
+        AskVaultStatusMessage = "Retrieving context...";
+        var result = await _askMyVaultService.BuildPreviewAsync(new AskMyVaultPreviewRequest
+        {
+            Query = AskVaultQuery,
+            CompanyId = SelectedAskVaultCompany?.Id,
+            MaxContextItems = 24
+        });
+
+        AskVaultContextItems.Clear();
+        foreach (var item in result.ContextItems)
+        {
+            AskVaultContextItems.Add(new AskVaultContextItemViewModel
+            {
+                ResultType = item.ResultType,
+                EntityId = item.EntityId,
+                Title = item.Title,
+                Excerpt = item.Excerpt,
+                Citation = item.Citation,
+                CompanyName = item.CompanyName
+            });
+        }
+
+        SelectedAskVaultContextItem = AskVaultContextItems.FirstOrDefault();
+        AskVaultPrompt = result.Prompt;
+        AskVaultStatusMessage = $"Retrieved {AskVaultContextItems.Count} context item(s).";
+    }
+
+    private void OpenAskVaultContextItem(AskVaultContextItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (string.Equals(item.ResultType, "note", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Notes", StringComparison.OrdinalIgnoreCase));
+            SelectedNote = Notes.FirstOrDefault(n => n.Id == item.EntityId) ?? AllNotes.FirstOrDefault(n => n.Id == item.EntityId);
+            AskVaultStatusMessage = SelectedNote is null
+                ? "Note context selected, but it is not loaded in the current note list."
+                : $"Opened note context: {item.Title}";
+            return;
+        }
+
+        if (string.Equals(item.ResultType, "document", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+            SelectedDocument = Documents.FirstOrDefault(d => d.Id == item.EntityId);
+            if (SelectedDocument is not null)
+            {
+                DetailsTextPreview = item.Excerpt;
+                AskVaultStatusMessage = $"Opened document context: {item.Title}";
+            }
+            else
+            {
+                AskVaultStatusMessage = "Document context selected, but it is not available in the current document list.";
+            }
+
+            return;
+        }
+
+        if (string.Equals(item.ResultType, "snippet", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.ResultType, "artifact", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Search", StringComparison.OrdinalIgnoreCase));
+            SearchQuery = item.Title;
+            AskVaultStatusMessage = $"{item.ResultType} context selected. Use Search to inspect full details.";
+            return;
+        }
+
+        AskVaultStatusMessage = "Context item selected, but no direct navigation target is available yet.";
     }
 
     private void PopulateCompanyForm(CompanyListItemViewModel? company)
