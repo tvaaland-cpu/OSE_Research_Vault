@@ -606,6 +606,21 @@
             </TabControl>
         </Grid>
 
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsSettingsSelected, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Width="640">
+                <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                <GroupBox Header="Import Inbox" Padding="12">
+                    <StackPanel>
+                        <CheckBox Content="Enable auto-import for inbox folder" IsChecked="{Binding ImportInboxEnabled}" Margin="0,0,0,8"/>
+                        <TextBlock Text="Folder path" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding ImportInboxFolderPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                        <Button Content="Save Inbox Settings" Width="160" Command="{Binding SaveImportInboxSettingsCommand}"/>
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </Grid>
+
         <Grid Grid.Column="1" Background="#FFF8FAFC">
             <Grid.Style>
                 <Style TargetType="Grid">
@@ -617,6 +632,7 @@
                         <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsSearchSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAgentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsSettingsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsInboxSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAutomationsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAskMyVaultSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
+using System.Windows;
 using OseResearchVault.App.Services;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
@@ -15,6 +16,8 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IAppSettingsService _appSettingsService;
+    private readonly IImportInboxWatcher _importInboxWatcher;
     private readonly INotificationService _notificationService;
     private readonly IAutomationService _automationService;
     private readonly IAskMyVaultService _askMyVaultService;
@@ -81,6 +84,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricCurrency = string.Empty;
     private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private string _importInboxFolderPath = string.Empty;
+    private bool _importInboxEnabled;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAppSettingsService appSettingsService, IImportInboxWatcher importInboxWatcher)
     private NotificationListItemViewModel? _selectedNotification;
     private string _toastMessage = string.Empty;
     private bool _isToastVisible;
@@ -116,6 +123,8 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _appSettingsService = appSettingsService;
+        _importInboxWatcher = importInboxWatcher;
         _notificationService = notificationService;
         _automationService = automationService;
         _askMyVaultService = askMyVaultService;
@@ -188,6 +197,9 @@ public sealed class MainViewModel : ViewModelBase
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        SaveImportInboxSettingsCommand = new RelayCommand(() => _ = SaveImportInboxSettingsAsync());
+
+        _importInboxWatcher.FileImported += OnImportInboxFileImported;
         RefreshInboxCommand = new RelayCommand(() => _ = LoadNotificationsAsync());
         MarkNotificationReadCommand = new RelayCommand(() => _ = MarkNotificationReadAsync(), () => SelectedNotification is not null && !SelectedNotification.IsRead);
         NewAutomationCommand = new RelayCommand(() => _ = NewAutomationAsync());
@@ -252,6 +264,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand SaveImportInboxSettingsCommand { get; }
     public RelayCommand RefreshInboxCommand { get; }
     public RelayCommand MarkNotificationReadCommand { get; }
     public RelayCommand NewAutomationCommand { get; }
@@ -277,6 +290,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsSettingsSelected));
                 OnPropertyChanged(nameof(IsInboxSelected));
                 OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsAskMyVaultSelected));
@@ -290,6 +304,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsSettingsSelected => IsSelected("Settings");
     public bool IsInboxSelected => IsSelected("Inbox");
     public bool IsAutomationsSelected => IsSelected("Automations");
 
@@ -695,6 +710,8 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
+    public string ImportInboxFolderPath { get => _importInboxFolderPath; set => SetProperty(ref _importInboxFolderPath, value); }
+    public bool ImportInboxEnabled { get => _importInboxEnabled; set => SetProperty(ref _importInboxEnabled, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
     public string EvidenceCoverageLabel
@@ -764,6 +781,37 @@ public sealed class MainViewModel : ViewModelBase
         await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        await LoadImportInboxSettingsAsync();
+        await _importInboxWatcher.ReloadAsync();
+    }
+
+
+    private async Task LoadImportInboxSettingsAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        ImportInboxFolderPath = settings.ImportInboxFolderPath;
+        ImportInboxEnabled = settings.ImportInboxEnabled;
+    }
+
+    private async Task SaveImportInboxSettingsAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        settings.ImportInboxFolderPath = ImportInboxFolderPath.Trim();
+        settings.ImportInboxEnabled = ImportInboxEnabled;
+        await _appSettingsService.SaveSettingsAsync(settings);
+        await _importInboxWatcher.ReloadAsync();
+        DocumentStatusMessage = "Import Inbox settings saved.";
+    }
+
+    private void OnImportInboxFileImported(object? sender, ImportInboxEvent e)
+    {
+        _ = Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            DocumentStatusMessage = e.Succeeded
+                ? $"Imported {e.FileName}"
+                : $"Import failed for {e.FileName}: {e.ErrorMessage}";
+
+            await LoadDocumentsAsync();
         await LoadNotificationsAsync();
         await LoadAutomationsAsync();
     }
