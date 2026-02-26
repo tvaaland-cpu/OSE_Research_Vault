@@ -242,6 +242,44 @@
         </Grid>
 
 
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsAutomationsSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Automations" FontSize="28" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding AutomationStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button Content="New" Command="{Binding NewAutomationCommand}"/>
+                    <Button Content="Edit" Margin="8,0,0,0" Command="{Binding EditAutomationCommand}"/>
+                    <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteAutomationCommand}"/>
+                    <Button Content="Run now" Margin="8,0,0,0" Command="{Binding RunAutomationNowCommand}"/>
+                    <Button Content="Enable toggle" Margin="8,0,0,0" Command="{Binding ToggleAutomationEnabledCommand}"/>
+                </StackPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Automations}" SelectedItem="{Binding SelectedAutomation}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,0,0,8">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*"/>
+                        <DataGridCheckBoxColumn Header="Enabled" Binding="{Binding Enabled}" Width="Auto"/>
+                        <DataGridTextColumn Header="Schedule" Binding="{Binding Schedule}" Width="*"/>
+                        <DataGridTextColumn Header="Next run" Binding="{Binding NextRun}" Width="*"/>
+                        <DataGridTextColumn Header="Last run" Binding="{Binding LastRun}" Width="*"/>
+                        <DataGridTextColumn Header="Last status" Binding="{Binding LastStatus}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Grid.Row="2" Text="Run history" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,6"/>
+                <DataGrid Grid.Row="3" ItemsSource="{Binding AutomationRuns}" SelectedItem="{Binding SelectedAutomationRun}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Trigger" Binding="{Binding TriggerType}" Width="*"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
+                        <DataGridTextColumn Header="Started" Binding="{Binding StartedAt}" Width="*"/>
+                        <DataGridTextColumn Header="Finished" Binding="{Binding FinishedAt}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+
+
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsSearchSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <StackPanel Margin="0,0,0,12">
@@ -322,6 +360,7 @@
                         <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsSearchSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAgentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsAutomationsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>

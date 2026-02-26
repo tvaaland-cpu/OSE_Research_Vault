@@ -58,6 +58,7 @@ public partial class App : Application
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<IAutomationService, SqliteAutomationService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
 #if OPENAI_PROVIDER

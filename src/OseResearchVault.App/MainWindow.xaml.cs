@@ -14,6 +14,26 @@ public partial class MainWindow : Window
         _viewModel = viewModel;
         InitializeComponent();
         DataContext = viewModel;
+        _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
+    }
+
+
+    private async void ViewModelOnAutomationRequested(object? sender, MainViewModel.AutomationEditorRequestedEventArgs e)
+    {
+        var agents = await _viewModel.GetAgentTemplatesAsync();
+        var companies = await _viewModel.GetCompaniesAsync();
+
+        var dialog = new AutomationEditorDialog(e.ExistingAutomation, agents, companies)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.Request is null)
+        {
+            return;
+        }
+
+        await _viewModel.SaveAutomationFromDialogAsync(e.ExistingAutomation, dialog.Request);
     }
 
     private async void DocumentDropArea_OnDrop(object sender, DragEventArgs e)

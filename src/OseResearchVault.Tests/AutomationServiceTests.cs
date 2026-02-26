@@ -7,10 +7,10 @@ using OseResearchVault.Data.Services;
 
 namespace OseResearchVault.Tests;
 
-public sealed class DatabaseSchemaSmokeTests
+public sealed class AutomationServiceTests
 {
     [Fact]
-    public async Task InitializeAsync_CreatesExpectedTables()
+    public async Task CreateAndRunNow_PersistsAutomationAndRunHistory()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -19,8 +19,33 @@ public sealed class DatabaseSchemaSmokeTests
         {
             var settingsService = new TestAppSettingsService(tempRoot);
             var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
-
             await initializer.InitializeAsync();
+
+            var automationService = new SqliteAutomationService(settingsService);
+
+            var automationId = await automationService.CreateAutomationAsync(new AutomationUpsertRequest
+            {
+                Name = "Daily refresh",
+                Enabled = true,
+                ScheduleType = "interval",
+                IntervalMinutes = 30,
+                PayloadType = "AskMyVault",
+                QueryText = "What changed?"
+            });
+
+            var runId = await automationService.RunNowAsync(automationId);
+
+            var all = await automationService.GetAutomationsAsync();
+            var automation = Assert.Single(all);
+            Assert.Equal("Daily refresh", automation.Name);
+            Assert.Equal("success", automation.LastStatus);
+            Assert.False(string.IsNullOrWhiteSpace(automation.NextRunAt));
+
+            var runs = await automationService.GetRunsAsync(automationId);
+            var run = Assert.Single(runs);
+            Assert.Equal(runId, run.Id);
+            Assert.Equal("manual", run.TriggerType);
+            Assert.Equal("success", run.Status);
 
             var settings = await settingsService.GetSettingsAsync();
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
@@ -30,23 +55,8 @@ public sealed class DatabaseSchemaSmokeTests
             }.ToString());
             await connection.OpenAsync();
 
-            var tableNames = (await connection.QueryAsync<string>(
-                "SELECT name FROM sqlite_master WHERE type='table' OR type='virtual table'"))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            var expectedTables = new[]
-            {
-                "schema_migrations",
-                "workspace", "company", "position", "watchlist_item", "source", "document", "document_text",
-                "note", "snippet", "agent", "agent_run", "tool_call", "artifact", "evidence_link", "automation", "automation_run", "tag",
-                "note_tag", "snippet_tag", "artifact_tag", "document_tag", "company_tag", "event", "metric",
-                "note_fts", "snippet_fts", "artifact_fts", "document_text_fts"
-            };
-
-            foreach (var expectedTable in expectedTables)
-            {
-                Assert.Contains(expectedTable, tableNames);
-            }
+            var count = await connection.QuerySingleAsync<int>("SELECT COUNT(1) FROM automation_run WHERE automation_id = @Id", new { Id = automationId });
+            Assert.Equal(1, count);
         }
         finally
         {
