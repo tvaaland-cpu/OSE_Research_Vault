@@ -86,6 +86,7 @@ public partial class App : Application
         services.AddSingleton<ISnapshotService, SnapshotService>();
         services.AddSingleton<IConnector, DummyUrlSnapshotConnector>();
         services.AddSingleton<IConnector, OseDirectoryCsvConnector>();
+        services.AddSingleton<IConnector, AnnouncementsConnector>();
         services.AddSingleton<IConnectorRegistry, ConnectorRegistry>();
         services.AddSingleton<IMetricService, SqliteMetricService>();
         services.AddSingleton<IExportService, SqliteExportService>();

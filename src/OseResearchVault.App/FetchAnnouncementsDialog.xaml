@@ -1,0 +1,33 @@
+<Window x:Class="OseResearchVault.App.FetchAnnouncementsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fetch announcements" Height="360" Width="520" WindowStartupLocation="CenterOwner" ResizeMode="CanResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Fetch recent announcements (company scoped)." FontWeight="SemiBold"/>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,8">
+            <TextBlock Text="Window:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox Width="110" SelectedValuePath="Tag" SelectedValue="{Binding Days}">
+                <ComboBoxItem Content="Last 30 days" Tag="30"/>
+                <ComboBoxItem Content="Last 90 days" Tag="90"/>
+            </ComboBox>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2">
+            <TextBlock Text="Manual URL list fallback (one URL per line):" Margin="0,0,0,6"/>
+            <TextBox Text="{Binding ManualUrls}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" Height="180"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Width="90" Margin="0,0,8,0" IsCancel="True"/>
+            <Button Content="Fetch" Width="100" IsDefault="True" Click="Fetch_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>
