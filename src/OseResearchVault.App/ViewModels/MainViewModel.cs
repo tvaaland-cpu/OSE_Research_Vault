@@ -63,6 +63,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private DateTime? _searchDateTo;
     private SearchResultListItemViewModel? _selectedSearchResult;
     private string _searchStatusMessage = "Search notes, documents, snippets, and artifacts.";
+    private int _searchPageNumber = 1;
+    private readonly int _searchPageSize = 50;
     private string _askVaultQuery = string.Empty;
     private CompanyOptionViewModel? _selectedAskVaultCompany;
     private AskVaultContextItemViewModel? _selectedAskVaultContextItem;
@@ -263,6 +265,8 @@ public sealed partial class MainViewModel : ViewModelBase
         DeleteNoteCommand = new RelayCommand(() => _ = DeleteNoteAsync(), () => SelectedNote is not null);
         NewNoteCommand = new RelayCommand(ClearNoteForm);
         ExecuteSearchCommand = new RelayCommand(() => _ = ExecuteSearchAsync(), () => !string.IsNullOrWhiteSpace(SearchQuery));
+        NextSearchPageCommand = new RelayCommand(() => _ = ExecuteSearchPageAsync(_searchPageNumber + 1), () => SearchResults.Count >= _searchPageSize);
+        PreviousSearchPageCommand = new RelayCommand(() => _ = ExecuteSearchPageAsync(_searchPageNumber - 1), () => _searchPageNumber > 1);
         OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
         RetrieveAskVaultCommand = new RelayCommand(() => _ = RetrieveAskVaultPreviewAsync(), () => !string.IsNullOrWhiteSpace(AskVaultQuery));
         OpenAskVaultContextItemCommand = new RelayCommand(() => OpenAskVaultContextItem(SelectedAskVaultContextItem), () => SelectedAskVaultContextItem is not null);
@@ -360,6 +364,8 @@ public sealed partial class MainViewModel : ViewModelBase
     public RelayCommand DeleteNoteCommand { get; }
     public RelayCommand NewNoteCommand { get; }
     public RelayCommand ExecuteSearchCommand { get; }
+    public RelayCommand NextSearchPageCommand { get; }
+    public RelayCommand PreviousSearchPageCommand { get; }
     public RelayCommand OpenSearchResultCommand { get; }
     public RelayCommand RetrieveAskVaultCommand { get; }
     public RelayCommand OpenAskVaultContextItemCommand { get; }
@@ -818,6 +824,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public DateTime? SearchDateFrom { get => _searchDateFrom; set => SetProperty(ref _searchDateFrom, value); }
     public DateTime? SearchDateTo { get => _searchDateTo; set => SetProperty(ref _searchDateTo, value); }
     public string SearchStatusMessage { get => _searchStatusMessage; set => SetProperty(ref _searchStatusMessage, value); }
+    public int SearchPageNumber => _searchPageNumber;
 
     public SearchResultListItemViewModel? SelectedSearchResult
     {
@@ -2078,6 +2085,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private async Task ExecuteSearchAsync()
     {
+        await ExecuteSearchPageAsync(1);
+    }
+
+    private async Task ExecuteSearchPageAsync(int pageNumber)
+    {
+        _searchPageNumber = Math.Max(1, pageNumber);
+
         var query = new SearchQuery
         {
             QueryText = SearchQuery,
@@ -2085,7 +2099,9 @@ public sealed partial class MainViewModel : ViewModelBase
             CompanyId = string.IsNullOrWhiteSpace(SelectedSearchCompany?.Id) ? null : SelectedSearchCompany.Id,
             Type = SelectedSearchType,
             DateFromIso = SearchDateFrom?.Date.ToString("O"),
-            DateToIso = SearchDateTo?.Date.AddDays(1).AddTicks(-1).ToString("O")
+            DateToIso = SearchDateTo?.Date.AddDays(1).AddTicks(-1).ToString("O"),
+            PageNumber = _searchPageNumber,
+            PageSize = _searchPageSize
         };
 
         var results = await _searchService.SearchAsync(query);
@@ -2103,7 +2119,10 @@ public sealed partial class MainViewModel : ViewModelBase
             });
         }
 
-        SearchStatusMessage = $"Found {results.Count} result(s).";
+        SearchStatusMessage = $"Page {_searchPageNumber}: {results.Count} result(s).";
+        OnPropertyChanged(nameof(SearchPageNumber));
+        PreviousSearchPageCommand.RaiseCanExecuteChanged();
+        NextSearchPageCommand.RaiseCanExecuteChanged();
     }
 
 

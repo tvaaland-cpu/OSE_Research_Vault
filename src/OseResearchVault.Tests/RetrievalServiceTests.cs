@@ -48,7 +48,7 @@ public sealed class RetrievalServiceTests
             await connection.ExecuteAsync("INSERT INTO artifact(id, workspace_id, artifact_type, title, content, created_at, updated_at) VALUES (@Id, @WorkspaceId, 'memo', @Title, @Content, @Now, @Now)", new { Id = artifactId, WorkspaceId = workspaceId, Title = "OEM memo", Content = "Analyst memo on tier-1 OEM channels.", Now = now });
             await connection.ExecuteAsync("INSERT INTO artifact_fts(id, content) VALUES (@Id, @Content)", new { Id = artifactId, Content = "Analyst memo on tier-1 OEM channels." });
 
-            var service = new SqliteRetrievalService(settingsService);
+            var service = new SqliteRetrievalService(settingsService, NullLogger<SqliteRetrievalService>.Instance);
             var result = await service.RetrieveAsync(workspaceId, "tier-1 OEM", companyId, limitPerType: 5, maxTotalChars: 10_000);
 
             Assert.Equal("tier-1 OEM", result.Query);
@@ -97,7 +97,7 @@ public sealed class RetrievalServiceTests
             await connection.ExecuteAsync("INSERT INTO note(id, workspace_id, title, content, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Title, @Content, @Now, @Now)", new { Id = noteId, WorkspaceId = workspaceId, Title = "Long OEM note", Content = longText, Now = now });
             await connection.ExecuteAsync("INSERT INTO note_fts(id, title, body) VALUES (@Id, @Title, @Body)", new { Id = noteId, Title = "Long OEM note", Body = longText });
 
-            var service = new SqliteRetrievalService(settingsService);
+            var service = new SqliteRetrievalService(settingsService, NullLogger<SqliteRetrievalService>.Instance);
             var result = await service.RetrieveAsync(workspaceId, "tier-1 OEM", companyId: null, limitPerType: 10, maxTotalChars: 600);
 
             var totalChars = result.Items.Sum(i => i.TextExcerpt.Length);

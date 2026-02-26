@@ -1,11 +1,15 @@
 using System.Text;
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 
 namespace OseResearchVault.Data.Services;
 
-public sealed class AskMyVaultService(ISearchService searchService) : IAskMyVaultService
+public sealed class AskMyVaultService(ISearchService searchService, ILogger<AskMyVaultService> logger) : IAskMyVaultService
 {
+    private const int MaxPreviewItems = 50;
+
     public async Task<AskMyVaultPreviewResult> BuildPreviewAsync(AskMyVaultPreviewRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Query))
@@ -17,18 +21,24 @@ public sealed class AskMyVaultService(ISearchService searchService) : IAskMyVaul
             };
         }
 
-        var maxItems = Math.Max(1, request.MaxContextItems);
+        var timer = Stopwatch.StartNew();
+        var maxItems = Math.Clamp(request.MaxContextItems, 1, MaxPreviewItems);
         var matches = await searchService.SearchAsync(new SearchQuery
         {
             QueryText = request.Query.Trim(),
             CompanyId = string.IsNullOrWhiteSpace(request.CompanyId) ? null : request.CompanyId,
-            Type = "All"
+            Type = "All",
+            PageNumber = 1,
+            PageSize = maxItems
         }, cancellationToken);
 
         var contextItems = matches
             .Take(maxItems)
             .Select(MapContextItem)
             .ToList();
+
+        timer.Stop();
+        logger.LogDebug("Ask My Vault retrieval built in {ElapsedMs} ms with {ContextCount} context item(s)", timer.ElapsedMilliseconds, contextItems.Count);
 
         return new AskMyVaultPreviewResult
         {

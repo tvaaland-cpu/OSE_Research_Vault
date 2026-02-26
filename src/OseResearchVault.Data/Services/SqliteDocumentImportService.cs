@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -59,7 +60,13 @@ public sealed partial class SqliteDocumentImportService(
 
                 var importedAt = DateTime.UtcNow.ToString("O");
                 var documentId = Guid.NewGuid().ToString();
+                var extractionTimer = Stopwatch.StartNew();
                 var extractedText = await TryExtractTextAsync(filePath, extension, cancellationToken);
+                extractionTimer.Stop();
+                logger.LogDebug(
+                    "Document text extraction completed in {ElapsedMs} ms for {FilePath}",
+                    extractionTimer.ElapsedMilliseconds,
+                    filePath);
 
                 await using var connection = OpenConnection(settings.DatabaseFilePath);
                 await connection.OpenAsync(cancellationToken);
