@@ -28,6 +28,17 @@ public partial class App : Application
         logger.LogInformation("Starting OSE Research Vault");
 
         var databaseInitializer = _serviceProvider.GetRequiredService<IDatabaseInitializer>();
+        var workspaceService = _serviceProvider.GetRequiredService<IWorkspaceService>();
+        if (await workspaceService.GetCurrentAsync() is null)
+        {
+            var workspaceDialog = _serviceProvider.GetRequiredService<SelectOrCreateWorkspaceDialog>();
+            if (workspaceDialog.ShowDialog() != true)
+            {
+                Shutdown();
+                return;
+            }
+        }
+
         await databaseInitializer.InitializeAsync();
 
         var automationScheduler = _serviceProvider.GetRequiredService<IAutomationScheduler>();
@@ -60,6 +71,7 @@ public partial class App : Application
         });
 
         services.AddSingleton<IAppSettingsService, JsonAppSettingsService>();
+        services.AddSingleton<IWorkspaceService, WorkspaceService>();
         services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
         services.AddSingleton<IHealthRepository, HealthRepository>();
         services.AddSingleton<ISnippetRepository, SqliteSnippetRepository>();
@@ -125,6 +137,8 @@ public partial class App : Application
         services.AddSingleton<IUserDialogService, MessageBoxDialogService>();
 
         services.AddSingleton<MainViewModel>();
+        services.AddTransient<SelectOrCreateWorkspaceDialog>();
+        services.AddTransient<WorkspaceManagerDialog>();
         services.AddSingleton<MainWindow>();
     }
 }
