@@ -88,6 +88,47 @@ public sealed class EvidenceServiceTests
         }
     }
 
+    [Fact]
+    public async Task CanSearchSnippetsAndDeleteEvidenceLink()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var ids = await SeedWorkspaceDataAsync(settingsService);
+
+            var service = new EvidenceService(
+                new SqliteSnippetRepository(settingsService),
+                new SqliteEvidenceLinkRepository(settingsService));
+
+            var snippet = await service.CreateSnippetAsync(
+                ids.WorkspaceId,
+                ids.DocumentId,
+                ids.CompanyId,
+                sourceId: null,
+                locator: "p=5",
+                text: "Free cash flow improved materially.",
+                createdBy: "unit-test");
+
+            var results = await service.SearchSnippetsAsync(ids.CompanyId, ids.DocumentId, "cash flow");
+            Assert.Contains(results, x => x.Id == snippet.Id);
+
+            var link = await service.CreateEvidenceLinkAsync(ids.ArtifactId, snippet.Id, null, null, null, null);
+            Assert.Single(await service.ListEvidenceLinksByArtifactAsync(ids.ArtifactId));
+
+            await service.DeleteEvidenceLinkAsync(link.Id);
+            Assert.Empty(await service.ListEvidenceLinksByArtifactAsync(ids.ArtifactId));
+        }
+        finally
+        {
+            Cleanup(tempRoot);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var path = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));

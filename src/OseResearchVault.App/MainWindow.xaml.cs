@@ -1,5 +1,7 @@
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Models;
 
@@ -101,6 +103,54 @@ public partial class MainWindow : Window
         }
 
         await _viewModel.CreateSnippetForSelectedDocumentAsync(dialog.Locator, dialog.SnippetTextValue, dialog.CompanyId);
+    }
+
+    private async void LinkArtifactSnippet_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedRunArtifact is null)
+        {
+            MessageBox.Show(this, "Select an artifact first.", "Link Snippet", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var defaultCompanyId = string.IsNullOrWhiteSpace(_viewModel.SelectedAgentRun?.CompanyId)
+            ? null
+            : _viewModel.SelectedAgentRun.CompanyId;
+
+        var companyOptions = new List<CompanyOptionViewModel> { new() { Id = string.Empty, DisplayName = "All companies" } };
+        companyOptions.AddRange(_viewModel.CompanyOptions);
+
+        var dialog = new LinkSnippetDialog(companyOptions, _viewModel.Documents.ToList(), defaultCompanyId, _viewModel.SearchSnippetsForLinkingAsync)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.SelectedSnippet is null)
+        {
+            return;
+        }
+
+        await _viewModel.LinkSnippetToSelectedArtifactAsync(dialog.SelectedSnippet.Id);
+    }
+
+    private async void RemoveEvidenceLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string evidenceLinkId } || string.IsNullOrWhiteSpace(evidenceLinkId))
+        {
+            return;
+        }
+
+        await _viewModel.RemoveEvidenceLinkAsync(evidenceLinkId);
+    }
+
+    private void EvidenceDocumentLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Hyperlink { Tag: string documentId } || string.IsNullOrWhiteSpace(documentId))
+        {
+            return;
+        }
+
+        _viewModel.OpenDocumentDetails(documentId);
     }
 
 }

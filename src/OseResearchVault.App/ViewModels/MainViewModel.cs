@@ -60,6 +60,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _agentStatusMessage = "Create reusable agent templates and run history.";
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
+    private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
     private string _selectedDocumentWorkspaceId = string.Empty;
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService)
@@ -104,6 +105,7 @@ public sealed class MainViewModel : ViewModelBase
         AgentRuns = [];
         RunSelectableDocuments = [];
         RunArtifacts = [];
+        ArtifactEvidenceLinks = [];
         DocumentSnippets = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
@@ -146,6 +148,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
     public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
+    public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
@@ -412,6 +415,7 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedRunArtifact, value))
             {
                 SaveArtifactCommand.RaiseCanExecuteChanged();
+                _ = RefreshArtifactEvidenceAsync();
             }
         }
     }
@@ -427,6 +431,7 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+    public string ArtifactEvidenceStatusMessage { get => _artifactEvidenceStatusMessage; set => SetProperty(ref _artifactEvidenceStatusMessage, value); }
     public bool CanCreateSnippet => SelectedDocument is not null;
 
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
@@ -953,6 +958,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 Id = run.Id,
                 AgentName = run.AgentName,
+                CompanyId = run.CompanyId ?? string.Empty,
                 CompanyName = run.CompanyName ?? string.Empty,
                 Query = run.Query,
                 Status = run.Status,
@@ -1050,9 +1056,11 @@ public sealed class MainViewModel : ViewModelBase
     private async Task LoadRunNotebookAsync(AgentRunListItemViewModel? run)
     {
         RunArtifacts.Clear();
+        ArtifactEvidenceLinks.Clear();
         if (run is null)
         {
             RunInputSummary = "Select a run to view notebook details.";
+            ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
             return;
         }
 
@@ -1078,6 +1086,93 @@ public sealed class MainViewModel : ViewModelBase
 
         await _agentService.UpdateArtifactContentAsync(SelectedRunArtifact.Id, SelectedRunArtifact.Content);
         AgentStatusMessage = "Artifact output saved.";
+    }
+
+    public async Task RefreshArtifactEvidenceAsync()
+    {
+        ArtifactEvidenceLinks.Clear();
+
+        if (SelectedRunArtifact is null)
+        {
+            ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
+            return;
+        }
+
+        var evidenceLinks = await _evidenceService.ListEvidenceLinksByArtifactAsync(SelectedRunArtifact.Id);
+        foreach (var evidenceLink in evidenceLinks)
+        {
+            ArtifactEvidenceLinks.Add(new ArtifactEvidenceListItemViewModel
+            {
+                EvidenceLinkId = evidenceLink.Id,
+                SnippetId = evidenceLink.SnippetId,
+                DocumentId = evidenceLink.DocumentId,
+                SnippetPreview = BuildSnippetPreview(evidenceLink.SnippetText, evidenceLink.Quote),
+                Locator = string.IsNullOrWhiteSpace(evidenceLink.Locator) ? "—" : evidenceLink.Locator,
+                DocumentTitle = string.IsNullOrWhiteSpace(evidenceLink.DocumentTitle) ? "(unknown)" : evidenceLink.DocumentTitle,
+                CompanyName = string.IsNullOrWhiteSpace(evidenceLink.CompanyName) ? string.Empty : evidenceLink.CompanyName
+            });
+        }
+
+        ArtifactEvidenceStatusMessage = ArtifactEvidenceLinks.Count == 0
+            ? "No evidence linked yet."
+            : $"{ArtifactEvidenceLinks.Count} evidence link(s).";
+    }
+
+    public async Task<IReadOnlyList<SnippetPickerListItemViewModel>> SearchSnippetsForLinkingAsync(string? companyId, string? documentId, string? query)
+    {
+        var snippets = await _evidenceService.SearchSnippetsAsync(companyId, documentId, query);
+        return snippets
+            .Select(static snippet => new SnippetPickerListItemViewModel
+            {
+                Id = snippet.Id,
+                DocumentId = snippet.DocumentId,
+                DocumentTitle = snippet.DocumentTitle,
+                Locator = snippet.Locator,
+                TextPreview = BuildPreview(snippet.Text)
+            })
+            .ToList();
+    }
+
+    public async Task LinkSnippetToSelectedArtifactAsync(string snippetId)
+    {
+        if (SelectedRunArtifact is null || string.IsNullOrWhiteSpace(snippetId))
+        {
+            return;
+        }
+
+        await _evidenceService.CreateEvidenceLinkAsync(SelectedRunArtifact.Id, snippetId, null, null, null, null);
+        await RefreshArtifactEvidenceAsync();
+        AgentStatusMessage = "Snippet linked to artifact.";
+    }
+
+    public async Task RemoveEvidenceLinkAsync(string evidenceLinkId)
+    {
+        if (string.IsNullOrWhiteSpace(evidenceLinkId))
+        {
+            return;
+        }
+
+        await _evidenceService.DeleteEvidenceLinkAsync(evidenceLinkId);
+        await RefreshArtifactEvidenceAsync();
+        AgentStatusMessage = "Evidence link removed.";
+    }
+
+    public void OpenDocumentDetails(string? documentId)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            return;
+        }
+
+        var match = Documents.FirstOrDefault(d => string.Equals(d.Id, documentId, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            return;
+        }
+
+        SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+        SelectedDocument = match;
+        DocumentStatusMessage = $"Opened document: {match.Title}";
     }
 
     private void OpenSearchResult(SearchResultListItemViewModel? result)
@@ -1135,5 +1230,26 @@ public sealed class MainViewModel : ViewModelBase
         return DateTime.TryParse(dateString, out var parsed)
             ? parsed.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
             : dateString;
+    }
+
+    private static string BuildSnippetPreview(string? snippetText, string? quote)
+    {
+        if (!string.IsNullOrWhiteSpace(quote))
+        {
+            return BuildPreview(quote);
+        }
+
+        return BuildPreview(snippetText);
+    }
+
+    private static string BuildPreview(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "(no snippet text)";
+        }
+
+        var trimmed = text.Trim();
+        return trimmed.Length <= 200 ? trimmed : $"{trimmed[..200]}…";
     }
 }
