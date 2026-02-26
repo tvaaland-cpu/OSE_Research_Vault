@@ -17,4 +17,10 @@ public interface ISnippetRepository
     Task<IReadOnlyList<Snippet>> ListSnippetsByDocumentAsync(string documentId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<Snippet>> ListSnippetsByCompanyAsync(string companyId, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<SnippetSearchResult>> SearchSnippetsAsync(
+        string? companyId,
+        string? documentId,
+        string? query,
+        CancellationToken cancellationToken = default);
 }
