@@ -70,6 +70,54 @@ public sealed class NoteAiImportFlowTests
         }
     }
 
+
+    [Fact]
+    public async Task CreateNoteAsync_WithInboxTag_CreatesNoteTagLink()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var ftsSyncService = new SqliteFtsSyncService(settingsService);
+            var noteService = new SqliteNoteService(settingsService, ftsSyncService);
+
+            var noteId = await noteService.CreateNoteAsync(new NoteUpsertRequest
+            {
+                Title = "Inbox capture",
+                Content = "Quick snippet",
+                NoteType = "log",
+                Tags = ["inbox"]
+            });
+
+            var settings = await settingsService.GetSettingsAsync();
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = settings.DatabaseFilePath,
+                ForeignKeys = true
+            }.ToString());
+            await connection.OpenAsync();
+
+            var linkedTag = await connection.QuerySingleAsync<string>(
+                @"SELECT t.name
+                  FROM note_tag nt
+                  INNER JOIN tag t ON t.id = nt.tag_id
+                  WHERE nt.note_id = @NoteId", new { NoteId = noteId });
+
+            Assert.Equal("inbox", linkedTag);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
     private sealed class TestAppSettingsService(string rootDirectory) : IAppSettingsService
     {
         private readonly AppSettings _settings = new()

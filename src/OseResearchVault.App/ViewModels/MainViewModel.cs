@@ -51,6 +51,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _companyStatusMessage = "Create and manage companies.";
     private string _noteTitle = string.Empty;
     private string _noteContent = string.Empty;
+    private string _noteTags = string.Empty;
     private string _selectedNoteType = "manual";
     private CompanyOptionViewModel? _notesFilterCompany;
     private string _notesFilterType = "All";
@@ -779,6 +780,7 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     public string NoteContent { get => _noteContent; set => SetProperty(ref _noteContent, value); }
+    public string NoteTags { get => _noteTags; set => SetProperty(ref _noteTags, value); }
     public string SelectedNoteType { get => _selectedNoteType; set => SetProperty(ref _selectedNoteType, value); }
     public CompanyOptionViewModel? NotesFilterCompany
     {
@@ -1476,7 +1478,8 @@ public sealed partial class MainViewModel : ViewModelBase
             Title = NoteTitle.Trim(),
             Content = NoteContent,
             NoteType = SelectedNoteType,
-            CompanyId = SelectedNoteCompany?.Id
+            CompanyId = SelectedNoteCompany?.Id,
+            Tags = NoteTags.Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
         };
 
         if (SelectedNote is null)
@@ -1512,6 +1515,7 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedNote));
         NoteTitle = string.Empty;
         NoteContent = string.Empty;
+        NoteTags = string.Empty;
         SelectedNoteType = "manual";
         SelectedNoteCompany = null;
     }

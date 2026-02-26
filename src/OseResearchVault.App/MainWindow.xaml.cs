@@ -25,8 +25,10 @@ public partial class MainWindow : Window
     private readonly IBackupService _backupService;
     private readonly IShareLogService _shareLogService;
     private readonly IDiagnosticsService _diagnosticsService;
+    private readonly ISnapshotService _snapshotService;
+    private readonly IAppSettingsService _appSettingsService;
 
-    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService, IShareLogService shareLogService, IDiagnosticsService diagnosticsService)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService, IShareLogService shareLogService, IDiagnosticsService diagnosticsService, ISnapshotService snapshotService, IAppSettingsService appSettingsService)
     {
         _viewModel = viewModel;
         _exportService = exportService;
@@ -36,6 +38,8 @@ public partial class MainWindow : Window
         _backupService = backupService;
         _shareLogService = shareLogService;
         _diagnosticsService = diagnosticsService;
+        _snapshotService = snapshotService;
+        _appSettingsService = appSettingsService;
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
@@ -84,26 +88,7 @@ public partial class MainWindow : Window
 
     private async void ImportAiOutput_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new AiImportDialog
-        {
-            Owner = this
-        };
-
-        if (dialog.ShowDialog() != true || dialog.Request is null)
-        {
-            return;
-        }
-
-        var request = new AiImportRequest
-        {
-            Model = dialog.Request.Model,
-            Prompt = dialog.Request.Prompt,
-            Response = dialog.Request.Response,
-            Sources = dialog.Request.Sources,
-            CompanyId = _viewModel.SelectedNoteCompany?.Id
-        };
-
-        await _viewModel.ImportAiOutputAsync(request);
+        await OpenAiImportDialogAsync(string.Empty, _viewModel.SelectedNoteCompany);
     }
 
     private void DocumentPreviewTextBox_OnSelectionChanged(object sender, RoutedEventArgs e)
@@ -596,6 +581,7 @@ public partial class MainWindow : Window
             CreateNavigateItem("Inbox"),
             new("New Note", "Quick create item", "new note create", () => _ = OpenNewNoteDialogAsync()),
             new("Import Document", "Quick create item", "import document file", OpenImportDocumentFromPalette),
+            new("Quick Capture", "Quick create item", "capture quick inbox url text ai", () => _ = OpenQuickCaptureDialogAsync()),
             new("Run AskMyVault", "Quick create item", "ask my vault run answer", RunAskMyVaultFromPalette),
             new("Export Research Pack", "Quick create item", "export research pack", () => _ = ExportResearchPackFromPaletteAsync())
         };
@@ -611,6 +597,119 @@ public partial class MainWindow : Window
         }
 
         return items;
+    }
+
+    private async Task OpenQuickCaptureDialogAsync()
+    {
+        var scopedCompany = _viewModel.SelectedHubCompany ?? _viewModel.SelectedNoteCompany;
+        var dialog = new QuickCaptureDialog(_viewModel.CompanyOptions, scopedCompany)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.CaptureMode is null)
+        {
+            return;
+        }
+
+        switch (dialog.CaptureMode)
+        {
+            case QuickCaptureMode.Url:
+                await CaptureUrlAsync(dialog.Url, dialog.SelectedCompany?.Id);
+                break;
+            case QuickCaptureMode.Text:
+                await CaptureTextAsync(dialog.TextContent, dialog.SelectedCompany?.Id);
+                break;
+            case QuickCaptureMode.AiImport:
+                await OpenAiImportDialogAsync(dialog.TextContent, dialog.SelectedCompany);
+                break;
+        }
+    }
+
+    private async Task CaptureUrlAsync(string url, string? companyId)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out _))
+        {
+            MessageBox.Show(this, "Enter a valid URL to capture.", "Quick Capture", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var workspaceId = await GetCurrentWorkspaceIdAsync();
+            await _snapshotService.SaveUrlSnapshotAsync(url, workspaceId, companyId, "html");
+            NavigateTo("Documents");
+            await _viewModel.LoadAsync();
+            MessageBox.Show(this, "URL captured to Documents inbox.", "Quick Capture", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to capture URL:\n{ex.Message}", "Quick Capture", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task CaptureTextAsync(string text, string? companyId)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            MessageBox.Show(this, "Paste text to capture.", "Quick Capture", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var preview = text.Trim();
+        var firstLine = preview.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "Quick capture";
+        var title = firstLine.Length > 80 ? firstLine[..80] : firstLine;
+
+        _viewModel.SelectedNoteCompany = _viewModel.CompanyOptions.FirstOrDefault(c => string.Equals(c.Id, companyId, StringComparison.OrdinalIgnoreCase));
+        _viewModel.NoteTitle = title;
+        _viewModel.NoteContent = text;
+        _viewModel.SelectedNoteType = "log";
+        _viewModel.NoteTags = "inbox";
+
+        NavigateTo("Notes");
+        if (_viewModel.SaveNoteCommand.CanExecute(null))
+        {
+            _viewModel.SaveNoteCommand.Execute(null);
+        }
+
+        await Task.Delay(10);
+        MessageBox.Show(this, "Text captured as inbox note.", "Quick Capture", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private async Task OpenAiImportDialogAsync(string seededResponse, CompanyOptionViewModel? selectedCompany)
+    {
+        var dialog = new AiImportDialog(seededResponse)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.Request is null)
+        {
+            return;
+        }
+
+        await _viewModel.ImportAiOutputAsync(new AiImportRequest
+        {
+            Model = dialog.Request.Model,
+            Prompt = dialog.Request.Prompt,
+            Response = dialog.Request.Response,
+            Sources = dialog.Request.Sources,
+            CompanyId = selectedCompany?.Id
+        });
+
+        NavigateTo("Notes");
+    }
+
+    private async Task<string> GetCurrentWorkspaceIdAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        if (!string.IsNullOrWhiteSpace(settings.CurrentWorkspaceId))
+        {
+            return settings.CurrentWorkspaceId;
+        }
+
+        return settings.Workspaces.FirstOrDefault()?.Id
+               ?? throw new InvalidOperationException("No active workspace found.");
     }
 
     private CommandPaletteItem CreateNavigateItem(string screen)
