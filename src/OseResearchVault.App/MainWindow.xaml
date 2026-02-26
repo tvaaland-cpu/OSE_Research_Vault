@@ -760,6 +760,7 @@
                                     <DataGridTextColumn Header="Date" Binding="{Binding PriceDate}" Width="150"/>
                                     <DataGridTextColumn Header="Close" Binding="{Binding CloseDisplay}" Width="120"/>
                                     <DataGridTextColumn Header="Currency" Binding="{Binding Currency}" Width="100"/>
+                                    <DataGridTextColumn Header="Evidence" Binding="{Binding EvidenceDisplay}" Width="*"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </GroupBox>
