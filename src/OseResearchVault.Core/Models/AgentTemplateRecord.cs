@@ -9,5 +9,6 @@ public sealed class AgentTemplateRecord
     public string AllowedToolsJson { get; init; } = "[]";
     public string OutputSchema { get; init; } = string.Empty;
     public string EvidencePolicy { get; init; } = string.Empty;
+    public string? ModelProfileId { get; init; }
     public string CreatedAt { get; init; } = string.Empty;
 }

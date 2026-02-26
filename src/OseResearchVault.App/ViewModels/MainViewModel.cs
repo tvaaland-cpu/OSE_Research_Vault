@@ -1083,6 +1083,7 @@ public sealed partial class MainViewModel : ViewModelBase
         await LoadNotesAsync();
         await LoadSearchFiltersAsync();
         await EnsureAskMyVaultAgentAsync();
+        await LoadModelProfilesAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
         await LoadDataQualityReportAsync();
@@ -2097,7 +2098,8 @@ public sealed partial class MainViewModel : ViewModelBase
                 Id = agent.Id,
                 Name = agent.Name,
                 Goal = agent.Goal,
-                EvidencePolicy = agent.EvidencePolicy
+                EvidencePolicy = agent.EvidencePolicy,
+                ModelProfileId = agent.ModelProfileId ?? string.Empty
             });
         }
     }
@@ -2131,7 +2133,8 @@ public sealed partial class MainViewModel : ViewModelBase
             Instructions = AgentInstructions,
             AllowedToolsJson = AgentAllowedTools,
             OutputSchema = AgentOutputSchema,
-            EvidencePolicy = AgentEvidencePolicy
+            EvidencePolicy = AgentEvidencePolicy,
+            ModelProfileId = SelectedAgentModelProfile?.ModelProfileId
         };
 
         if (SelectedAgentTemplate is null)
@@ -2158,6 +2161,7 @@ public sealed partial class MainViewModel : ViewModelBase
         AgentAllowedTools = "[]";
         AgentOutputSchema = string.Empty;
         AgentEvidencePolicy = string.Empty;
+        SelectedAgentModelProfile = ModelProfiles.FirstOrDefault(x => x.IsDefault) ?? ModelProfiles.FirstOrDefault();
     }
 
     private async Task PopulateAgentTemplateFormAsync(AgentTemplateListItemViewModel? template)
@@ -2179,6 +2183,9 @@ public sealed partial class MainViewModel : ViewModelBase
         AgentAllowedTools = full.AllowedToolsJson;
         AgentOutputSchema = full.OutputSchema;
         AgentEvidencePolicy = full.EvidencePolicy;
+        SelectedAgentModelProfile = ModelProfiles.FirstOrDefault(x => x.ModelProfileId == full.ModelProfileId)
+            ?? ModelProfiles.FirstOrDefault(x => x.IsDefault)
+            ?? ModelProfiles.FirstOrDefault();
     }
 
     private async Task RunAgentAsync()
@@ -2214,7 +2221,8 @@ public sealed partial class MainViewModel : ViewModelBase
                 AgentId = SelectedAgentTemplate.Id,
                 CompanyId = SelectedRunCompany?.Id,
                 Query = AgentQuery,
-                SelectedDocumentIds = selectedDocIds
+                SelectedDocumentIds = selectedDocIds,
+                ModelProfileId = SelectedAgentModelProfile?.ModelProfileId
             });
 
             AgentStatusMessage = "Run executed and output artifact captured.";
@@ -2228,7 +2236,8 @@ public sealed partial class MainViewModel : ViewModelBase
             AgentId = askMyVault.Id,
             CompanyId = SelectedRunCompany?.Id,
             Query = AgentQuery,
-            SelectedDocumentIds = selectedDocIds
+            SelectedDocumentIds = selectedDocIds,
+            ModelProfileId = SelectedAgentModelProfile?.ModelProfileId
         });
 
         await LoadAgentRunsAsync();
