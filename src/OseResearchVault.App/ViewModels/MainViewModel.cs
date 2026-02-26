@@ -120,7 +120,7 @@ public sealed class MainViewModel : ViewModelBase
         OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
         SaveAgentTemplateCommand = new RelayCommand(() => _ = SaveAgentTemplateAsync(), () => !string.IsNullOrWhiteSpace(AgentName));
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
-        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
+        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
 
         _selectedItem = NavigationItems[1];
@@ -479,8 +479,28 @@ public sealed class MainViewModel : ViewModelBase
         await LoadDocumentsAsync();
         await LoadNotesAsync();
         await LoadSearchFiltersAsync();
+        await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+    }
+
+    private async Task EnsureAskMyVaultAgentAsync()
+    {
+        var existing = (await _agentService.GetAgentsAsync()).FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            return;
+        }
+
+        await _agentService.CreateAgentAsync(new AgentTemplateUpsertRequest
+        {
+            Name = "AskMyVault",
+            Goal = "Answer questions from local vault evidence",
+            Instructions = "Use retrieved context and include citations like [DOC:<document_id>|chunk:<i>] and [SNIP:<id>] when available.",
+            AllowedToolsJson = "[\"local_search\",\"prompt_build\"]",
+            OutputSchema = "markdown",
+            EvidencePolicy = "citation_required_when_available"
+        });
     }
 
     private async Task SaveSelectedDocumentCompanyAsync()
@@ -1023,8 +1043,21 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RunAgentAsync()
     {
-        if (SelectedAgentTemplate is null)
+        var askMyVault = SelectedAgentTemplate;
+        if (askMyVault is null || !string.Equals(askMyVault.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase))
         {
+            askMyVault = AgentTemplates.FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+            if (askMyVault is null)
+            {
+                await EnsureAskMyVaultAgentAsync();
+                await LoadAgentsAsync();
+                askMyVault = AgentTemplates.FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        if (askMyVault is null)
+        {
+            AgentStatusMessage = "Unable to find AskMyVault template.";
             return;
         }
 
@@ -1036,15 +1069,20 @@ public sealed class MainViewModel : ViewModelBase
 
         var runId = await _agentService.CreateRunAsync(new AgentRunRequest
         {
-            AgentId = SelectedAgentTemplate.Id,
+            AgentId = askMyVault.Id,
             CompanyId = SelectedRunCompany?.Id,
             Query = AgentQuery,
             SelectedDocumentIds = selectedDocIds
         });
 
-        AgentStatusMessage = "Run executed and output artifact captured.";
+        AgentStatusMessage = "Answer generated and run history captured.";
         await LoadAgentRunsAsync();
         SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+        var toolCalls = await _agentService.GetToolCallsAsync(runId);
+        if (toolCalls.Any(x => x.Name == "citation_parse" && x.OutputJson.Contains("\"citationCount\":0", StringComparison.OrdinalIgnoreCase)))
+        {
+            AgentStatusMessage = "Answer generated and run history captured. No citations detected.";
+        }
     }
 
     private async Task LoadRunNotebookAsync(AgentRunListItemViewModel? run)
@@ -1058,7 +1096,10 @@ public sealed class MainViewModel : ViewModelBase
 
         var selectedDocIds = JsonSerializer.Deserialize<List<string>>(run.SelectedDocumentIdsJson) ?? [];
         RunInputSummary = $"Query: {run.Query}{Environment.NewLine}Selected docs: {(selectedDocIds.Count == 0 ? "(none)" : string.Join(", ", selectedDocIds))}";
-        RunToolCallsSummary = "No tool calls yet (MVP).";
+        var toolCalls = await _agentService.GetToolCallsAsync(run.Id);
+        RunToolCallsSummary = toolCalls.Count == 0
+            ? "No tool calls captured."
+            : string.Join(Environment.NewLine, toolCalls.Select(tc => $"{tc.Name} [{tc.Status}]"));
 
         var artifacts = await _agentService.GetArtifactsAsync(run.Id);
         foreach (var artifact in artifacts)
