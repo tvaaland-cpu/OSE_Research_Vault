@@ -306,7 +306,30 @@
                 <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}"/></TabItem>
                 <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}"/></TabItem>
                 <TabItem Header="Events"><ListBox ItemsSource="{Binding HubEvents}"/></TabItem>
-                <TabItem Header="Metrics"><ListBox ItemsSource="{Binding HubMetrics}"/></TabItem>
+                <TabItem Header="Metrics">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBox Width="160" Margin="0,0,8,0" Text="{Binding MetricName, UpdateSourceTrigger=PropertyChanged}" ToolTip="Metric name"/>
+                            <TextBox Width="110" Margin="0,0,8,0" Text="{Binding MetricPeriod, UpdateSourceTrigger=PropertyChanged}" ToolTip="Period (e.g. 2025-Q1)"/>
+                            <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricValue, UpdateSourceTrigger=PropertyChanged}" ToolTip="Value"/>
+                            <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricUnit, UpdateSourceTrigger=PropertyChanged}" ToolTip="Unit"/>
+                            <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricCurrency, UpdateSourceTrigger=PropertyChanged}" ToolTip="Currency"/>
+                            <Button Content="Save Metric" Command="{Binding SaveMetricCommand}"/>
+                        </StackPanel>
+                        <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <ListBox ItemsSource="{Binding HubMetrics}"/>
+                            <TextBlock Grid.Row="1" Margin="0,8,0,0" Text="{Binding MetricStatusMessage}" Foreground="#FF2D3748"/>
+                        </Grid>
+                    </Grid>
+                </TabItem>
                 <TabItem Header="Agent Runs"><ListBox ItemsSource="{Binding HubAgentRuns}"/></TabItem>
             </TabControl>
         </Grid>

@@ -2,6 +2,7 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.App.Logging;
+using OseResearchVault.App.Services;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Data.Repositories;
@@ -58,6 +59,8 @@ public partial class App : Application
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<IMetricService, SqliteMetricService>();
+        services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
 #if OPENAI_PROVIDER
