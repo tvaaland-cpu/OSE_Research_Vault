@@ -1,0 +1,38 @@
+<Window x:Class="OseResearchVault.App.RestoreWorkspaceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Restore Workspace from Backup" Height="280" Width="640" WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Backup zip file"/>
+        <DockPanel Grid.Row="1" Margin="0,4,0,10">
+            <TextBox x:Name="ZipPathTextBox" DockPanel.Dock="Left" Margin="0,0,8,0" MinWidth="470"/>
+            <Button Content="Browse…" Width="90" Click="BrowseZip_OnClick"/>
+        </DockPanel>
+
+        <TextBlock Grid.Row="2" Text="Destination workspace folder"/>
+        <DockPanel Grid.Row="3" Margin="0,4,0,10">
+            <StackPanel>
+                <DockPanel>
+                    <TextBox x:Name="DestinationFolderTextBox" DockPanel.Dock="Left" Margin="0,0,8,0" MinWidth="470"/>
+                    <Button Content="Browse…" Width="90" Click="BrowseFolder_OnClick"/>
+                </DockPanel>
+                <TextBlock Text="Display name" Margin="0,10,0,0"/>
+                <TextBox x:Name="DisplayNameTextBox" Margin="0,4,0,0"/>
+                <CheckBox x:Name="SwitchCheckBox" Content="Switch to restored workspace after finish" Margin="0,10,0,0" IsChecked="True"/>
+            </StackPanel>
+        </DockPanel>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_OnClick"/>
+            <Button Content="Finish" Width="90" Click="Finish_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

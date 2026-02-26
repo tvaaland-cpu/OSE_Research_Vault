@@ -8,10 +8,12 @@ namespace OseResearchVault.App;
 public partial class WorkspaceManagerDialog : Window
 {
     private readonly IWorkspaceService _workspaceService;
+    private readonly IRestoreService _restoreService;
 
-    public WorkspaceManagerDialog(IWorkspaceService workspaceService)
+    public WorkspaceManagerDialog(IWorkspaceService workspaceService, IRestoreService restoreService)
     {
         _workspaceService = workspaceService;
+        _restoreService = restoreService;
         InitializeComponent();
         Loaded += async (_, _) => await ReloadAsync();
     }
@@ -73,5 +75,52 @@ public partial class WorkspaceManagerDialog : Window
     private void Close_OnClick(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private async void RestoreFromBackup_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new RestoreWorkspaceDialog { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(dialog.DestinationFolderPath)
+                && Directory.EnumerateFileSystemEntries(dialog.DestinationFolderPath).Any()
+                && MessageBox.Show(this,
+                    "Destination folder is not empty. Existing files may be replaced. Continue?",
+                    "Restore Workspace",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            if (Directory.Exists(dialog.DestinationFolderPath)
+                && Directory.EnumerateFileSystemEntries(dialog.DestinationFolderPath).Any())
+            {
+                Directory.Delete(dialog.DestinationFolderPath, recursive: true);
+            }
+
+            var restored = await _restoreService.RestoreWorkspaceFromZipAsync(
+                dialog.ZipPath,
+                dialog.DestinationFolderPath,
+                dialog.DisplayName);
+
+            if (dialog.SwitchToRestoredWorkspace)
+            {
+                await _workspaceService.SwitchAsync(restored.Id);
+                DialogResult = true;
+                return;
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Restore Workspace", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 }
