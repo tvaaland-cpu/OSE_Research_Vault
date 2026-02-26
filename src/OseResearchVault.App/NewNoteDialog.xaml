@@ -1,0 +1,40 @@
+<Window x:Class="OseResearchVault.App.NewNoteDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="New Note"
+        Width="560"
+        Height="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Title" FontWeight="SemiBold"/>
+        <TextBox x:Name="TitleTextBox" Grid.Row="1" Margin="0,4,0,12"/>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,12">
+            <StackPanel Margin="0,0,8,0">
+                <TextBlock Text="Type" FontWeight="SemiBold"/>
+                <ComboBox x:Name="NoteTypeComboBox" Width="160" Margin="0,4,0,0"/>
+            </StackPanel>
+            <StackPanel>
+                <TextBlock Text="Company" FontWeight="SemiBold"/>
+                <ComboBox x:Name="CompanyComboBox" Width="320" Margin="0,4,0,0" DisplayMemberPath="DisplayName"/>
+            </StackPanel>
+        </StackPanel>
+
+        <TextBox x:Name="ContentTextBox" Grid.Row="3" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Width="90" IsCancel="True"/>
+            <Button Content="Create" Width="90" Margin="8,0,0,0" IsDefault="True" Click="Create_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>
