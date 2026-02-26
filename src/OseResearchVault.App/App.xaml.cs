@@ -79,6 +79,7 @@ public partial class App : Application
         services.AddSingleton<ILLMProvider>(sp => sp.GetRequiredService<GeminiLlmProvider>());
 #endif
         services.AddSingleton<ILLMProviderFactory, LlmProviderFactory>();
+        services.AddSingleton<IPromptBuilder, AskVaultPromptBuilder>();
         services.AddSingleton<IUserDialogService, MessageBoxDialogService>();
 
         services.AddSingleton<MainViewModel>();
