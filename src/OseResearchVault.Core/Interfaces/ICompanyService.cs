@@ -29,6 +29,9 @@ public interface ICompanyService
     Task<string> CreateScenarioKpiAsync(string scenarioId, ScenarioKpiUpsertRequest request, CancellationToken cancellationToken = default);
     Task UpdateScenarioKpiAsync(string scenarioKpiId, ScenarioKpiUpsertRequest request, CancellationToken cancellationToken = default);
     Task DeleteScenarioKpiAsync(string scenarioKpiId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<JournalEntryRecord>> GetCompanyJournalEntriesAsync(string companyId, bool reviewDueOnly = false, CancellationToken cancellationToken = default);
+    Task<string> CreateJournalEntryAsync(string companyId, JournalEntryUpsertRequest request, IReadOnlyList<string>? tradeIds = null, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default);
+    Task UpdateJournalEntryAsync(string journalEntryId, JournalEntryUpsertRequest request, IReadOnlyList<string>? tradeIds = null, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetCompanyAgentRunsAsync(string companyId, CancellationToken cancellationToken = default);
     Task<PriceImportResult> ImportCompanyDailyPricesCsvAsync(string companyId, string csvFilePath, string? dateColumn = null, string? closeColumn = null, CancellationToken cancellationToken = default);
     Task<PriceDailyRecord?> GetLatestCompanyPriceAsync(string companyId, CancellationToken cancellationToken = default);

@@ -42,7 +42,7 @@ public sealed class DatabaseSchemaSmokeTests
                 "note", "snippet", "agent", "agent_run", "tool_call", "artifact", "evidence_link", "automation", "automation_run", "tag",
                 "note_tag", "snippet_tag", "artifact_tag", "document_tag", "company_tag", "event", "metric", "trade",
                 "automation", "automation_run",
-                "price_daily", "thesis_version", "scenario", "scenario_kpi", "note_fts", "snippet_fts", "artifact_fts", "document_text_fts"
+                "price_daily", "thesis_version", "scenario", "scenario_kpi", "journal_entry", "journal_trade", "journal_snippet", "note_fts", "snippet_fts", "artifact_fts", "document_text_fts"
             };
 
             foreach (var expectedTable in expectedTables)
