@@ -79,6 +79,7 @@ public partial class App : Application
         services.AddSingleton<INotificationService, SqliteNotificationService>();
         services.AddSingleton<IAutomationService, SqliteAutomationService>();
         services.AddSingleton<IMetricService, SqliteMetricService>();
+        services.AddSingleton<IExportService, SqliteExportService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();

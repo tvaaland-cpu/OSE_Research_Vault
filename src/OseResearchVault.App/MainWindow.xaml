@@ -618,6 +618,7 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                 <TextBlock Text="Company Hub" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <ComboBox Width="360" Margin="16,0,0,0" ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedHubCompany}" DisplayMemberPath="DisplayName"/>
+                <Button Content="Export Research Pack…" Margin="8,0,0,0" Click="ExportResearchPack_OnClick"/>
             </StackPanel>
             <TabControl Grid.Row="1">
                 <TabItem Header="Overview"><TextBlock Padding="12" Text="Company intelligence overview."/></TabItem>

@@ -2,6 +2,8 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using OseResearchVault.Core.Interfaces;
+using Forms = System.Windows.Forms;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Models;
 
@@ -10,10 +12,14 @@ namespace OseResearchVault.App;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private readonly IExportService _exportService;
+    private readonly INotificationService _notificationService;
 
-    public MainWindow(MainViewModel viewModel)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService)
     {
         _viewModel = viewModel;
+        _exportService = exportService;
+        _notificationService = notificationService;
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
@@ -240,4 +246,29 @@ public partial class MainWindow : Window
         _viewModel.OpenDocumentDetails(documentId);
     }
 
+
+    private async void ExportResearchPack_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedHubCompany is null)
+        {
+            MessageBox.Show(this, "Select a company first.", "Export Research Pack", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = "Choose an export folder for the company research pack."
+        };
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        {
+            return;
+        }
+
+        var targetFolder = Path.Combine(dialog.SelectedPath, $"research-pack-{_viewModel.SelectedHubCompany.DisplayName}-{DateTime.UtcNow:yyyyMMddHHmmss}");
+        await _exportService.ExportCompanyResearchPackAsync(string.Empty, _viewModel.SelectedHubCompany.Id, targetFolder);
+        await _notificationService.AddNotification("info", "Research pack exported", $"Research pack saved to: {targetFolder}");
+        MessageBox.Show(this, $"Research pack exported to:
+{targetFolder}", "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 }

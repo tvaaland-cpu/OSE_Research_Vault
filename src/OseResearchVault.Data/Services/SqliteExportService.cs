@@ -1,0 +1,338 @@
+using System.Globalization;
+using System.Text;
+using Dapper;
+using Microsoft.Data.Sqlite;
+using OseResearchVault.Core.Interfaces;
+
+namespace OseResearchVault.Data.Services;
+
+public sealed class SqliteExportService(IAppSettingsService appSettingsService) : IExportService
+{
+    public async Task ExportCompanyResearchPackAsync(string workspaceId, string companyId, string outputFolder, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(companyId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputFolder);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        Directory.CreateDirectory(outputFolder);
+        var artifactsDir = Path.Combine(outputFolder, "artifacts");
+        var documentsDir = Path.Combine(outputFolder, "documents");
+        Directory.CreateDirectory(artifactsDir);
+        Directory.CreateDirectory(documentsDir);
+
+        await using var connection = new SqliteConnection($"Data Source={settings.DatabaseFilePath}");
+        await connection.OpenAsync(cancellationToken);
+
+        var company = await connection.QuerySingleOrDefaultAsync<CompanyRow>(new CommandDefinition(
+            @"SELECT id, name, ticker, isin
+                FROM company
+               WHERE id = @CompanyId", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+        if (company is null)
+        {
+            throw new InvalidOperationException("Company not found.");
+        }
+
+        var positionSummary = await connection.QueryFirstOrDefaultAsync<string>(new CommandDefinition(
+            @"SELECT COALESCE(label, '') || CASE WHEN COALESCE(thesis, '') = '' THEN '' ELSE ': ' || thesis END
+                FROM position
+               WHERE company_id = @CompanyId
+            ORDER BY updated_at DESC
+               LIMIT 1", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        var notes = await connection.QueryAsync<NoteRow>(new CommandDefinition(
+            @"SELECT title, note_type AS NoteType, content, updated_at AS UpdatedAt
+                FROM note
+               WHERE company_id = @CompanyId
+            ORDER BY note_type, updated_at DESC", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        var metrics = await connection.QueryAsync<MetricRow>(new CommandDefinition(
+            @"SELECT m.metric_key AS MetricName,
+                     TRIM(COALESCE(m.period_start, '') || CASE WHEN m.period_start IS NOT NULL AND m.period_end IS NOT NULL THEN ' - ' ELSE '' END || COALESCE(m.period_end, '')) AS Period,
+                     m.metric_value AS Value,
+                     m.unit,
+                     m.currency,
+                     d.title AS EvidenceDocumentTitle,
+                     COALESCE(s.context, '') AS EvidenceLocator,
+                     m.snippet_id AS SnippetId
+                FROM metric m
+                LEFT JOIN snippet s ON s.id = m.snippet_id
+                LEFT JOIN document d ON d.id = s.document_id
+               WHERE m.company_id = @CompanyId
+            ORDER BY m.recorded_at DESC", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        var events = await connection.QueryAsync<EventRow>(new CommandDefinition(
+            @"SELECT e.occurred_at AS EventDate,
+                     e.event_type AS EventType,
+                     COALESCE(json_extract(e.payload_json, '$.confidence'), '') AS Confidence,
+                     COALESCE(e.title, '') AS Description,
+                     d.title AS EvidenceDocumentTitle,
+                     COALESCE(s.context, '') AS EvidenceLocator
+                FROM event e
+                LEFT JOIN evidence_link el ON el.from_entity_type = 'event' AND el.from_entity_id = e.id AND el.to_entity_type = 'snippet'
+                LEFT JOIN snippet s ON s.id = el.to_entity_id
+                LEFT JOIN document d ON d.id = s.document_id
+               WHERE e.company_id = @CompanyId
+            ORDER BY e.occurred_at", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        var artifacts = await connection.QueryAsync<ArtifactRow>(new CommandDefinition(
+            @"SELECT id, title, content
+                FROM artifact
+               WHERE company_id = @CompanyId
+            ORDER BY created_at", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        var hasArchivedFlag = await HasColumnAsync(connection, "document", "is_archived", cancellationToken);
+        var documentsSql = hasArchivedFlag
+            ? @"SELECT id, title, file_path AS FilePath, COALESCE(content_hash, '') AS ContentHash
+                  FROM document
+                 WHERE company_id = @CompanyId
+                   AND COALESCE(is_archived, 0) = 0"
+            : @"SELECT id, title, file_path AS FilePath, COALESCE(content_hash, '') AS ContentHash
+                  FROM document
+                 WHERE company_id = @CompanyId";
+        var documents = (await connection.QueryAsync<DocumentRow>(new CommandDefinition(documentsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken))).ToList();
+
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "index.md"), BuildIndex(company, positionSummary, DateTimeOffset.UtcNow, workspaceId), cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "notes.md"), BuildNotes(notes), cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "metrics.csv"), BuildMetricsCsv(metrics), cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "events.csv"), BuildEventsCsv(events), cancellationToken);
+
+        foreach (var artifact in artifacts)
+        {
+            var evidence = await connection.QueryAsync<ArtifactEvidenceRow>(new CommandDefinition(
+                @"SELECT COALESCE(s.quote_text, el.quote, '') AS Excerpt,
+                         COALESCE(s.context, el.locator, '') AS Locator,
+                         COALESCE(d.title, '') AS DocumentTitle
+                    FROM evidence_link el
+                    LEFT JOIN snippet s ON s.id = el.to_entity_id AND el.to_entity_type = 'snippet'
+                    LEFT JOIN document d ON d.id = s.document_id
+                   WHERE el.from_entity_type = 'artifact'
+                     AND el.from_entity_id = @ArtifactId
+                ORDER BY el.created_at", new { ArtifactId = artifact.Id }, cancellationToken: cancellationToken));
+
+            var artifactFile = Path.Combine(artifactsDir, $"{SanitizeFileName(string.IsNullOrWhiteSpace(artifact.Title) ? artifact.Id : artifact.Title)}.md");
+            await File.WriteAllTextAsync(artifactFile, BuildArtifactMarkdown(artifact, evidence), cancellationToken);
+        }
+
+        var copiedByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var document in documents)
+        {
+            if (string.IsNullOrWhiteSpace(document.FilePath) || !File.Exists(document.FilePath))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(document.ContentHash) && copiedByHash.TryGetValue(document.ContentHash, out var existingPath))
+            {
+                var duplicateTarget = Path.Combine(documentsDir, Path.GetFileName(existingPath));
+                if (!File.Exists(duplicateTarget))
+                {
+                    File.Copy(existingPath, duplicateTarget, overwrite: false);
+                }
+                continue;
+            }
+
+            var fileName = Path.GetFileName(document.FilePath);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = $"{SanitizeFileName(document.Title)}.bin";
+            }
+
+            var targetPath = Path.Combine(documentsDir, fileName);
+            if (File.Exists(targetPath))
+            {
+                targetPath = Path.Combine(documentsDir, $"{Path.GetFileNameWithoutExtension(fileName)}_{document.Id[..8]}{Path.GetExtension(fileName)}");
+            }
+
+            File.Copy(document.FilePath, targetPath, overwrite: false);
+            if (!string.IsNullOrWhiteSpace(document.ContentHash))
+            {
+                copiedByHash[document.ContentHash] = targetPath;
+            }
+        }
+    }
+
+    private static string BuildIndex(CompanyRow company, string? positionSummary, DateTimeOffset generatedAt, string workspaceId)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"# Research Pack - {company.Name}");
+        sb.AppendLine();
+        sb.AppendLine($"- Workspace: {(string.IsNullOrWhiteSpace(workspaceId) ? "(default)" : workspaceId)}");
+        sb.AppendLine($"- Company: {company.Name}");
+        sb.AppendLine($"- Ticker: {company.Ticker}");
+        sb.AppendLine($"- ISIN: {company.Isin}");
+        if (!string.IsNullOrWhiteSpace(positionSummary))
+        {
+            sb.AppendLine($"- Position summary: {positionSummary}");
+        }
+
+        sb.AppendLine($"- Generated at: {generatedAt:O}");
+        sb.AppendLine();
+        sb.AppendLine("## Files");
+        sb.AppendLine("- [notes.md](notes.md)");
+        sb.AppendLine("- [metrics.csv](metrics.csv)");
+        sb.AppendLine("- [events.csv](events.csv)");
+        sb.AppendLine("- [artifacts/](artifacts)");
+        sb.AppendLine("- [documents/](documents)");
+        return sb.ToString();
+    }
+
+    private static string BuildNotes(IEnumerable<NoteRow> notes)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("# Notes");
+
+        foreach (var group in notes.GroupBy(n => string.IsNullOrWhiteSpace(n.NoteType) ? "manual" : n.NoteType))
+        {
+            sb.AppendLine();
+            sb.AppendLine($"## {group.Key}");
+            foreach (var note in group)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"### {note.Title}");
+                sb.AppendLine($"Updated: {note.UpdatedAt}");
+                sb.AppendLine();
+                sb.AppendLine(note.Content);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildMetricsCsv(IEnumerable<MetricRow> metrics)
+    {
+        var rows = new StringBuilder();
+        rows.AppendLine("metric_name,period,value,unit,currency,evidence_document_title,evidence_locator,snippet_id");
+        foreach (var metric in metrics)
+        {
+            rows.AppendLine(string.Join(',',
+                Csv(metric.MetricName),
+                Csv(metric.Period),
+                Csv(metric.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
+                Csv(metric.Unit),
+                Csv(metric.Currency),
+                Csv(metric.EvidenceDocumentTitle),
+                Csv(metric.EvidenceLocator),
+                Csv(metric.SnippetId)));
+        }
+
+        return rows.ToString();
+    }
+
+    private static string BuildEventsCsv(IEnumerable<EventRow> events)
+    {
+        var rows = new StringBuilder();
+        rows.AppendLine("event_date,event_type,confidence,description,evidence_document_title,evidence_locator");
+        foreach (var item in events)
+        {
+            rows.AppendLine(string.Join(',',
+                Csv(item.EventDate),
+                Csv(item.EventType),
+                Csv(item.Confidence),
+                Csv(item.Description),
+                Csv(item.EvidenceDocumentTitle),
+                Csv(item.EvidenceLocator)));
+        }
+
+        return rows.ToString();
+    }
+
+    private static string BuildArtifactMarkdown(ArtifactRow artifact, IEnumerable<ArtifactEvidenceRow> evidence)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"# {artifact.Title}");
+        sb.AppendLine();
+        sb.AppendLine(artifact.Content);
+        sb.AppendLine();
+        sb.AppendLine("## Evidence");
+        foreach (var item in evidence)
+        {
+            sb.AppendLine($"- {item.Excerpt} (Locator: {item.Locator}; Document: {item.DocumentTitle})");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string Csv(string? value)
+    {
+        var text = value ?? string.Empty;
+        return $"\"{text.Replace("\"", "\"\"")}\"";
+    }
+
+    private static string SanitizeFileName(string input)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = input.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray();
+        return string.IsNullOrWhiteSpace(new string(chars)) ? "artifact" : new string(chars);
+    }
+
+    private static async Task<bool> HasColumnAsync(SqliteConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
+    {
+        var columns = await connection.QueryAsync<TableInfoRow>(new CommandDefinition($"PRAGMA table_info({tableName})", cancellationToken: cancellationToken));
+        return columns.Any(c => string.Equals(c.Name, columnName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class TableInfoRow
+    {
+        public string Name { get; init; } = string.Empty;
+    }
+
+    private sealed class CompanyRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string? Ticker { get; init; }
+        public string? Isin { get; init; }
+    }
+
+    private sealed class NoteRow
+    {
+        public string Title { get; init; } = string.Empty;
+        public string? NoteType { get; init; }
+        public string Content { get; init; } = string.Empty;
+        public string UpdatedAt { get; init; } = string.Empty;
+    }
+
+    private sealed class MetricRow
+    {
+        public string MetricName { get; init; } = string.Empty;
+        public string? Period { get; init; }
+        public double? Value { get; init; }
+        public string? Unit { get; init; }
+        public string? Currency { get; init; }
+        public string? EvidenceDocumentTitle { get; init; }
+        public string? EvidenceLocator { get; init; }
+        public string? SnippetId { get; init; }
+    }
+
+    private sealed class EventRow
+    {
+        public string EventDate { get; init; } = string.Empty;
+        public string EventType { get; init; } = string.Empty;
+        public string? Confidence { get; init; }
+        public string Description { get; init; } = string.Empty;
+        public string? EvidenceDocumentTitle { get; init; }
+        public string? EvidenceLocator { get; init; }
+    }
+
+    private sealed class ArtifactRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string Content { get; init; } = string.Empty;
+    }
+
+    private sealed class ArtifactEvidenceRow
+    {
+        public string Excerpt { get; init; } = string.Empty;
+        public string Locator { get; init; } = string.Empty;
+        public string DocumentTitle { get; init; } = string.Empty;
+    }
+
+    private sealed class DocumentRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string FilePath { get; init; } = string.Empty;
+        public string ContentHash { get; init; } = string.Empty;
+    }
+}

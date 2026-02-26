@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DefineConstants>$(DefineConstants);$([MSBuild]::IfElse('$(EnableOpenAiProvider)' == 'true', 'OPENAI_PROVIDER', ''));$([MSBuild]::IfElse('$(EnableAnthropicProvider)' == 'true', 'ANTHROPIC_PROVIDER', ''));$([MSBuild]::IfElse('$(EnableGeminiProvider)' == 'true', 'GEMINI_PROVIDER', ''))</DefineConstants>
