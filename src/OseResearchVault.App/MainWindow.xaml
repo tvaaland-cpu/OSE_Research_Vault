@@ -295,6 +295,35 @@
             </Grid>
         </Grid>
 
+
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsAutomationsSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Automations" FontSize="28" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding AutomationStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748"/>
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+                <GroupBox Header="Templates" Grid.Column="0">
+                    <StackPanel Margin="6">
+                        <Button Content="Use Daily review (08:00)" Command="{Binding CreateDailyReviewAutomationCommand}" Margin="0,0,0,6"/>
+                        <Button Content="Use Weekly watchlist scan (Mon 08:30)" Command="{Binding CreateWeeklyWatchlistAutomationCommand}" Margin="0,0,0,6"/>
+                        <Button Content="Use Import inbox hourly (60 min)" Command="{Binding CreateImportInboxAutomationCommand}"/>
+                    </StackPanel>
+                </GroupBox>
+                <GroupBox Header="Created automations" Grid.Column="2">
+                    <DataGrid ItemsSource="{Binding Automations}" AutoGenerateColumns="False" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                            <DataGridTextColumn Header="Schedule" Binding="{Binding ScheduleSummary}" Width="*"/>
+                            <DataGridTextColumn Header="Payload" Binding="{Binding Payload}" Width="2*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </GroupBox>
+            </Grid>
+        </Grid>
+
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsCompanyHubSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -322,6 +351,7 @@
                         <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsSearchSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAgentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsAutomationsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>

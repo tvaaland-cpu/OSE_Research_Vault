@@ -13,6 +13,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IAutomationTemplateService _automationTemplateService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -61,8 +62,9 @@ public sealed class MainViewModel : ViewModelBase
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private string _automationStatusMessage = "Create automations from built-in templates.";
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAutomationTemplateService automationTemplateService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
@@ -70,6 +72,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _automationTemplateService = automationTemplateService;
 
         NavigationItems =
         [
@@ -80,6 +83,7 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Documents"),
             new NavigationItem("Notes"),
             new NavigationItem("Agents"),
+            new NavigationItem("Automations"),
             new NavigationItem("Search"),
             new NavigationItem("Settings")
         ];
@@ -104,6 +108,8 @@ public sealed class MainViewModel : ViewModelBase
         AgentRuns = [];
         RunSelectableDocuments = [];
         RunArtifacts = [];
+        AutomationTemplates = [];
+        Automations = [];
         DocumentSnippets = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
@@ -122,6 +128,9 @@ public sealed class MainViewModel : ViewModelBase
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        CreateDailyReviewAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("daily-review"));
+        CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-watchlist-scan"));
+        CreateImportInboxAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("import-inbox-hourly"));
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -146,6 +155,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
     public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
+    public ObservableCollection<AutomationTemplateListItemViewModel> AutomationTemplates { get; }
+    public ObservableCollection<AutomationListItemViewModel> Automations { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
@@ -165,6 +176,9 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand CreateDailyReviewAutomationCommand { get; }
+    public RelayCommand CreateWeeklyWatchlistAutomationCommand { get; }
+    public RelayCommand CreateImportInboxAutomationCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -179,6 +193,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsAutomationsSelected));
             }
         }
     }
@@ -189,6 +204,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsAutomationsSelected => IsSelected("Automations");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -427,6 +443,7 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+    public string AutomationStatusMessage { get => _automationStatusMessage; set => SetProperty(ref _automationStatusMessage, value); }
     public bool CanCreateSnippet => SelectedDocument is not null;
 
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
@@ -481,8 +498,38 @@ public sealed class MainViewModel : ViewModelBase
         await LoadSearchFiltersAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        LoadAutomationTemplates();
     }
 
+
+    private void LoadAutomationTemplates()
+    {
+        AutomationTemplates.Clear();
+        foreach (var template in _automationTemplateService.GetTemplates())
+        {
+            AutomationTemplates.Add(new AutomationTemplateListItemViewModel
+            {
+                Id = template.Id,
+                Name = template.Name,
+                Description = template.Description,
+                ScheduleSummary = template.ScheduleSummary,
+                Payload = template.Payload
+            });
+        }
+    }
+
+    private void CreateAutomationFromTemplate(string templateId)
+    {
+        var automation = _automationTemplateService.CreateAutomationFromTemplate(templateId);
+        Automations.Add(new AutomationListItemViewModel
+        {
+            Name = automation.Name,
+            ScheduleSummary = automation.ScheduleSummary,
+            Payload = automation.Payload
+        });
+
+        AutomationStatusMessage = $"Automation created: {automation.Name}";
+    }
     private async Task SaveSelectedDocumentCompanyAsync()
     {
         if (SelectedDocument is null)
