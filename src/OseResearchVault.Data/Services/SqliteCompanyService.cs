@@ -240,6 +240,7 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
                 FROM document d
                 LEFT JOIN company c ON c.id = d.company_id
                WHERE d.company_id = @CompanyId
+                 AND COALESCE(d.is_archived, 0) = 0
             ORDER BY COALESCE(d.imported_at, d.created_at) DESC", new { CompanyId = companyId }, cancellationToken: cancellationToken));
         return rows.ToList();
     }

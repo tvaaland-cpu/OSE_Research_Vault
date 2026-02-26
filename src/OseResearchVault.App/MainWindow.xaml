@@ -295,6 +295,66 @@
             </Grid>
         </Grid>
 
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsDataQualitySelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Data Quality" FontSize="28" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <ComboBox Width="300" ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedQualityCompany}" DisplayMemberPath="DisplayName"/>
+                    <Button Content="Refresh" Margin="8,0,0,0" Command="{Binding RefreshDataQualityCommand}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding DataQualityStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <GroupBox Header="Unlinked Documents" Margin="0,0,0,8">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Bottom" Content="Link to Company" Margin="0,8,0,0" Command="{Binding LinkSelectedUnlinkedDocumentCommand}"/>
+                            <DataGrid ItemsSource="{Binding DataQualityUnlinkedDocuments}" SelectedItem="{Binding SelectedUnlinkedDocument}" AutoGenerateColumns="False" IsReadOnly="True" Height="160">
+                                <DataGrid.Columns><DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*"/><DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="140"/></DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </GroupBox>
+                    <GroupBox Header="Unlinked Notes" Margin="0,0,0,8">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Bottom" Content="Link to Company" Margin="0,8,0,0" Command="{Binding LinkSelectedUnlinkedNoteCommand}"/>
+                            <DataGrid ItemsSource="{Binding DataQualityUnlinkedNotes}" SelectedItem="{Binding SelectedUnlinkedNote}" AutoGenerateColumns="False" IsReadOnly="True" Height="160">
+                                <DataGrid.Columns><DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*"/><DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="140"/></DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </GroupBox>
+                    <GroupBox Header="Evidence Gaps (artifacts with no evidence links)">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Bottom" Content="Open Artifact" Margin="0,8,0,0" Command="{Binding OpenEvidenceGapCommand}"/>
+                            <DataGrid ItemsSource="{Binding DataQualityEvidenceGaps}" SelectedItem="{Binding SelectedEvidenceGap}" AutoGenerateColumns="False" IsReadOnly="True" Height="160">
+                                <DataGrid.Columns><DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*"/><DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="140"/></DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </GroupBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                    <GroupBox Header="Duplicate Documents" Margin="0,0,0,8">
+                        <StackPanel>
+                            <ComboBox ItemsSource="{Binding DataQualityDuplicateGroups}" SelectedItem="{Binding SelectedDuplicateGroup}" DisplayMemberPath="DisplayLabel"/>
+                            <ComboBox Margin="0,8,0,0" ItemsSource="{Binding SelectedDuplicateGroup.Documents}" SelectedItem="{Binding SelectedDuplicateKeepDocument}" DisplayMemberPath="Title"/>
+                            <Button Content="Keep one, archive others" Margin="0,8,0,0" Command="{Binding ArchiveDuplicateGroupCommand}"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Metric Evidence Issues" Margin="0,0,0,8">
+                        <DataGrid ItemsSource="{Binding DataQualityMetricIssues}" AutoGenerateColumns="False" IsReadOnly="True" Height="160">
+                            <DataGrid.Columns><DataGridTextColumn Header="Metric" Binding="{Binding MetricKey}" Width="*"/><DataGridTextColumn Header="Recorded" Binding="{Binding RecordedAt}" Width="140"/></DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                    <GroupBox Header="Snippet Issues">
+                        <DataGrid ItemsSource="{Binding DataQualitySnippetIssues}" AutoGenerateColumns="False" IsReadOnly="True" Height="220">
+                            <DataGrid.Columns><DataGridTextColumn Header="Locator" Binding="{Binding Locator}" Width="*"/><DataGridTextColumn Header="Parent" Binding="{Binding ParentReference}" Width="220"/></DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsCompanyHubSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -322,6 +382,7 @@
                         <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsSearchSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAgentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsDataQualitySelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>

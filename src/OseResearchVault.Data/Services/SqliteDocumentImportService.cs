@@ -131,6 +131,7 @@ public sealed partial class SqliteDocumentImportService(
                      NULL AS ExtractedText
                 FROM document d
                 LEFT JOIN company c ON c.id = d.company_id
+               WHERE COALESCE(d.is_archived, 0) = 0
             ORDER BY COALESCE(d.imported_at, d.created_at) DESC" ,
             cancellationToken: cancellationToken));
 
@@ -160,7 +161,8 @@ public sealed partial class SqliteDocumentImportService(
                     ORDER BY dt.chunk_index) AS ExtractedText
                 FROM document d
                 LEFT JOIN company c ON c.id = d.company_id
-               WHERE d.id = @DocumentId", new { DocumentId = documentId }, cancellationToken: cancellationToken));
+               WHERE d.id = @DocumentId
+                 AND COALESCE(d.is_archived, 0) = 0", new { DocumentId = documentId }, cancellationToken: cancellationToken));
 
         return row;
     }
