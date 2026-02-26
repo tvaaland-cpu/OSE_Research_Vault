@@ -1548,7 +1548,8 @@ public sealed class MainViewModel : ViewModelBase
             {
                 PriceDate = price.PriceDate,
                 CloseDisplay = price.Close.ToString("0.####", CultureInfo.InvariantCulture),
-                Currency = price.Currency
+                Currency = price.Currency,
+                SourceId = price.SourceId
             });
         }
 

@@ -29,9 +29,24 @@ public sealed class CompanyPriceImportTests
             var result = await companyService.ImportCompanyDailyPricesCsvAsync(companyId, csvPath);
 
             Assert.Equal(2, result.InsertedOrUpdatedCount);
+            Assert.False(string.IsNullOrWhiteSpace(result.SourceId));
+            Assert.False(string.IsNullOrWhiteSpace(result.DocumentId));
+
             var prices = await companyService.GetCompanyDailyPricesAsync(companyId, 90);
             Assert.Equal(2, prices.Count);
             Assert.Equal("2025-01-02", prices[0].PriceDate);
+            Assert.All(prices, price => Assert.Equal(result.SourceId, price.SourceId));
+
+            var settings = await settingsService.GetSettingsAsync();
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = settings.DatabaseFilePath,
+                ForeignKeys = true
+            }.ToString());
+            await connection.OpenAsync();
+
+            var snapshotPath = await connection.QuerySingleAsync<string>("SELECT file_path FROM document WHERE id = @Id", new { Id = result.DocumentId });
+            Assert.True(File.Exists(snapshotPath));
         }
         finally
         {
@@ -62,7 +77,7 @@ public sealed class CompanyPriceImportTests
             await File.WriteAllTextAsync(csv2, "date,close\n2025-01-01,122.0\n");
 
             await companyService.ImportCompanyDailyPricesCsvAsync(companyId, csv1);
-            await companyService.ImportCompanyDailyPricesCsvAsync(companyId, csv2);
+            var secondImport = await companyService.ImportCompanyDailyPricesCsvAsync(companyId, csv2);
 
             var settings = await settingsService.GetSettingsAsync();
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
@@ -78,6 +93,7 @@ public sealed class CompanyPriceImportTests
             var latest = await companyService.GetLatestCompanyPriceAsync(companyId);
             Assert.NotNull(latest);
             Assert.Equal(122.0, latest!.Close);
+            Assert.Equal(secondImport.SourceId, latest.SourceId);
         }
         finally
         {
