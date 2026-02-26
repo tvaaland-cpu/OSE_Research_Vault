@@ -238,6 +238,62 @@
                                     </Grid.RowDefinitions>
                                     <TextBox Text="{Binding SelectedRunArtifact.Content, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Height="180" TextWrapping="Wrap"/>
                                     <Button Content="Save Artifact Output" Width="160" Margin="0,6,0,0" Command="{Binding SaveArtifactCommand}"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,6">
+                                        <Ellipse Width="10" Height="10" Margin="0,0,6,0">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="#FFE53E3E"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasEvidenceCoverage}" Value="True">
+                                                            <Setter Property="Fill" Value="#FF38A169"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="{Binding EvidenceCoverageLabel}" FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#FFC53030"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasEvidenceCoverage}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FF2F855A"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding ArtifactEvidenceLinks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,6">
+                                                    <StackPanel>
+                                                        <DockPanel>
+                                                            <TextBlock Text="{Binding DocumentTitle}" FontWeight="SemiBold" DockPanel.Dock="Left"/>
+                                                            <Button Content="Copy citation"
+                                                                    Click="CopyCitation_OnClick"
+                                                                    Tag="{Binding Citation}"
+                                                                    HorizontalAlignment="Right"
+                                                                    Padding="8,2"/>
+                                                        </DockPanel>
+                                                        <TextBlock Text="{Binding Quote}" TextWrapping="Wrap" Foreground="#FF4A5568" Margin="0,4,0,4"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                            <TextBlock Text="Locator: " FontWeight="SemiBold"/>
+                                                            <TextBlock Text="{Binding Locator}"/>
+                                                            <Border Background="#FFFEEBC8" CornerRadius="4" Padding="5,1" Margin="8,0,0,0" Visibility="{Binding HasMissingLocator, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Text="Missing locator" Foreground="#FF975A16" FontSize="11" FontWeight="SemiBold"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock>
+                                                            <Run Text="Snippet ID: " FontWeight="SemiBold"/>
+                                                            <Run Text="{Binding SnippetId}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                     <GroupBox Header="Artifact Evidence" Margin="0,10,0,0">
                                         <StackPanel>
                                             <Button Content="Create Snippet &amp; Link..." Width="180" Click="CreateSnippetAndLink_OnClick"/>

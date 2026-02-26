@@ -105,6 +105,9 @@ public partial class MainWindow : Window
         await _viewModel.CreateSnippetForSelectedDocumentAsync(dialog.Locator, dialog.SnippetTextValue, dialog.CompanyId);
     }
 
+    private void CopyCitation_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.Tag is not string citation || string.IsNullOrWhiteSpace(citation))
 
     private async void CreateSnippetAndLink_OnClick(object sender, RoutedEventArgs e)
     {
@@ -180,6 +183,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        Clipboard.SetText(citation);
+        _viewModel.AgentStatusMessage = "Citation copied to clipboard.";
         await _viewModel.CreateSnippetAndLinkToArtifactAsync(
             _viewModel.SelectedRunArtifact.Id,
             dialog.SelectedDocumentId,

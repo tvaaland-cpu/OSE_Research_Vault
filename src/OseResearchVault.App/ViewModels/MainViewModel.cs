@@ -60,6 +60,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _agentStatusMessage = "Create reusable agent templates and run history.";
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
+    private string _evidenceCoverageLabel = "0 evidence links";
     private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
     private string _selectedDocumentWorkspaceId = string.Empty;
 
@@ -148,6 +149,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
     public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
+    public ObservableCollection<ArtifactEvidenceLinkListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
     public IReadOnlyList<string> NoteTypes { get; }
@@ -415,6 +417,7 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedRunArtifact, value))
             {
                 SaveArtifactCommand.RaiseCanExecuteChanged();
+                _ = LoadEvidenceLinksForSelectedArtifactAsync(value);
                 _ = RefreshArtifactEvidenceAsync();
             }
         }
@@ -431,6 +434,13 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+    public string EvidenceCoverageLabel
+    {
+        get => _evidenceCoverageLabel;
+        private set => SetProperty(ref _evidenceCoverageLabel, value);
+    }
+
+    public bool HasEvidenceCoverage => ArtifactEvidenceLinks.Count > 0;
     public string ArtifactEvidenceStatusMessage { get => _artifactEvidenceStatusMessage; set => SetProperty(ref _artifactEvidenceStatusMessage, value); }
     public bool CanCreateSnippet => SelectedDocument is not null;
 
@@ -846,6 +856,12 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        if (snippetText.Trim().Length < 10)
+        {
+            DocumentStatusMessage = "Snippet text must be at least 10 characters.";
+            return;
+        }
+
         var workspaceId = _selectedDocumentWorkspaceId;
         if (string.IsNullOrWhiteSpace(workspaceId))
         {
@@ -1057,6 +1073,8 @@ public sealed class MainViewModel : ViewModelBase
     {
         RunArtifacts.Clear();
         ArtifactEvidenceLinks.Clear();
+        EvidenceCoverageLabel = "0 evidence links";
+        OnPropertyChanged(nameof(HasEvidenceCoverage));
         if (run is null)
         {
             RunInputSummary = "Select a run to view notebook details.";
@@ -1075,6 +1093,41 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         SelectedRunArtifact = RunArtifacts.FirstOrDefault();
+    }
+
+    private async Task LoadEvidenceLinksForSelectedArtifactAsync(ArtifactListItemViewModel? artifact)
+    {
+        ArtifactEvidenceLinks.Clear();
+        if (artifact is null)
+        {
+            EvidenceCoverageLabel = "0 evidence links";
+            OnPropertyChanged(nameof(HasEvidenceCoverage));
+            return;
+        }
+
+        var evidenceLinks = await _evidenceService.ListEvidenceLinksByArtifactAsync(artifact.Id);
+        foreach (var link in evidenceLinks)
+        {
+            var locatorValue = string.IsNullOrWhiteSpace(link.Locator) ? "(missing locator)" : link.Locator.Trim();
+            var snippetIdValue = string.IsNullOrWhiteSpace(link.SnippetId) ? "-" : link.SnippetId.Trim();
+            var title = string.IsNullOrWhiteSpace(link.DocumentTitle) ? "Untitled document" : link.DocumentTitle.Trim();
+
+            ArtifactEvidenceLinks.Add(new ArtifactEvidenceLinkListItemViewModel
+            {
+                Id = link.Id,
+                DocumentTitle = title,
+                Locator = locatorValue,
+                SnippetId = snippetIdValue,
+                Quote = string.IsNullOrWhiteSpace(link.Quote) ? link.SnippetText ?? string.Empty : link.Quote,
+                HasMissingLocator = string.IsNullOrWhiteSpace(link.Locator),
+                Citation = $"[{title} | {locatorValue} | {snippetIdValue}]"
+            });
+        }
+
+        EvidenceCoverageLabel = ArtifactEvidenceLinks.Count == 1
+            ? "1 evidence link"
+            : $"{ArtifactEvidenceLinks.Count} evidence links";
+        OnPropertyChanged(nameof(HasEvidenceCoverage));
     }
 
     private async Task SaveArtifactAsync()
