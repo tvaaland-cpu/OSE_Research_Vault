@@ -73,6 +73,7 @@ public partial class App : Application
         services.AddSingleton<IAskMyVaultService, AskMyVaultService>();
         services.AddSingleton<IRetrievalService, SqliteRetrievalService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<IDataQualityService, SqliteDataQualityService>();
         services.AddSingleton<IAutomationTemplateService, InMemoryAutomationTemplateService>();
         services.AddSingleton<IImportInboxWatcher, FileSystemImportInboxWatcher>();
         services.AddSingleton<INotificationService, SqliteNotificationService>();

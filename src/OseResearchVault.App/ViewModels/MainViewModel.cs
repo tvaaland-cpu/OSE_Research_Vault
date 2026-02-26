@@ -16,6 +16,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IDataQualityService _dataQualityService;
     private readonly IAutomationTemplateService _automationTemplateService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly IImportInboxWatcher _importInboxWatcher;
@@ -85,6 +86,15 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricCurrency = string.Empty;
     private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private string _dataQualityStatusMessage = "Run a report to detect vault data quality issues.";
+    private DataQualityUnlinkedListItemViewModel? _selectedUnlinkedDocument;
+    private DataQualityUnlinkedListItemViewModel? _selectedUnlinkedNote;
+    private CompanyOptionViewModel? _selectedQualityCompany;
+    private DataQualityDuplicateGroupViewModel? _selectedDuplicateGroup;
+    private DataQualityDuplicateDocumentViewModel? _selectedDuplicateKeepDocument;
+    private DataQualityArtifactGapViewModel? _selectedEvidenceGap;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IDataQualityService dataQualityService)
     private string _automationStatusMessage = "Create automations from built-in templates.";
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAutomationTemplateService automationTemplateService)
@@ -127,6 +137,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _dataQualityService = dataQualityService;
         _automationTemplateService = automationTemplateService;
         _appSettingsService = appSettingsService;
         _importInboxWatcher = importInboxWatcher;
@@ -150,6 +161,7 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Automations"),
             new NavigationItem("Ask My Vault"),
             new NavigationItem("Search"),
+            new NavigationItem("Data Quality"),
             new NavigationItem("Inbox"),
             new NavigationItem("Settings")
         ];
@@ -185,6 +197,12 @@ public sealed class MainViewModel : ViewModelBase
         Automations = [];
         AutomationRuns = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
+        DataQualityDuplicateGroups = [];
+        DataQualityUnlinkedDocuments = [];
+        DataQualityUnlinkedNotes = [];
+        DataQualityEvidenceGaps = [];
+        DataQualityMetricIssues = [];
+        DataQualitySnippetIssues = [];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
         SaveDocumentCompanyCommand = new RelayCommand(() => _ = SaveSelectedDocumentCompanyAsync(), () => SelectedDocument is not null);
@@ -204,6 +222,11 @@ public sealed class MainViewModel : ViewModelBase
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        RefreshDataQualityCommand = new RelayCommand(() => _ = LoadDataQualityReportAsync());
+        LinkSelectedUnlinkedDocumentCommand = new RelayCommand(() => _ = LinkSelectedUnlinkedDocumentAsync(), () => SelectedUnlinkedDocument is not null && SelectedQualityCompany is not null);
+        LinkSelectedUnlinkedNoteCommand = new RelayCommand(() => _ = LinkSelectedUnlinkedNoteAsync(), () => SelectedUnlinkedNote is not null && SelectedQualityCompany is not null);
+        ArchiveDuplicateGroupCommand = new RelayCommand(() => _ = ArchiveDuplicateGroupAsync(), () => SelectedDuplicateGroup is not null && SelectedDuplicateKeepDocument is not null);
+        OpenEvidenceGapCommand = new RelayCommand(OpenSelectedEvidenceGap, () => SelectedEvidenceGap is not null);
         CreateDailyReviewAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("daily-review"));
         CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-watchlist-scan"));
         CreateImportInboxAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("import-inbox-hourly"));
@@ -253,6 +276,12 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<ArtifactEvidenceLinkListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
+    public ObservableCollection<DataQualityDuplicateGroupViewModel> DataQualityDuplicateGroups { get; }
+    public ObservableCollection<DataQualityUnlinkedListItemViewModel> DataQualityUnlinkedDocuments { get; }
+    public ObservableCollection<DataQualityUnlinkedListItemViewModel> DataQualityUnlinkedNotes { get; }
+    public ObservableCollection<DataQualityArtifactGapViewModel> DataQualityEvidenceGaps { get; }
+    public ObservableCollection<DataQualityMetricIssueViewModel> DataQualityMetricIssues { get; }
+    public ObservableCollection<DataQualitySnippetIssueViewModel> DataQualitySnippetIssues { get; }
     public ObservableCollection<NotificationListItemViewModel> Notifications { get; }
     public ObservableCollection<AutomationListItemViewModel> Automations { get; }
     public ObservableCollection<AutomationRunListItemViewModel> AutomationRuns { get; }
@@ -276,6 +305,11 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand RefreshDataQualityCommand { get; }
+    public RelayCommand LinkSelectedUnlinkedDocumentCommand { get; }
+    public RelayCommand LinkSelectedUnlinkedNoteCommand { get; }
+    public RelayCommand ArchiveDuplicateGroupCommand { get; }
+    public RelayCommand OpenEvidenceGapCommand { get; }
     public RelayCommand CreateDailyReviewAutomationCommand { get; }
     public RelayCommand CreateWeeklyWatchlistAutomationCommand { get; }
     public RelayCommand CreateImportInboxAutomationCommand { get; }
@@ -305,6 +339,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsDataQualitySelected));
                 OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsSettingsSelected));
                 OnPropertyChanged(nameof(IsInboxSelected));
@@ -320,6 +355,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsDataQualitySelected => IsSelected("Data Quality");
     public bool IsAutomationsSelected => IsSelected("Automations");
     public bool IsSettingsSelected => IsSelected("Settings");
     public bool IsInboxSelected => IsSelected("Inbox");
@@ -715,6 +751,79 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentAllowedTools { get => _agentAllowedTools; set => SetProperty(ref _agentAllowedTools, value); }
     public string AgentOutputSchema { get => _agentOutputSchema; set => SetProperty(ref _agentOutputSchema, value); }
     public string AgentEvidencePolicy { get => _agentEvidencePolicy; set => SetProperty(ref _agentEvidencePolicy, value); }
+    public string AgentQuery { get => _agentQuery; set => SetProperty(ref _agentQuery, value); }
+    public string DataQualityStatusMessage { get => _dataQualityStatusMessage; set => SetProperty(ref _dataQualityStatusMessage, value); }
+
+    public DataQualityUnlinkedListItemViewModel? SelectedUnlinkedDocument
+    {
+        get => _selectedUnlinkedDocument;
+        set
+        {
+            if (SetProperty(ref _selectedUnlinkedDocument, value))
+            {
+                LinkSelectedUnlinkedDocumentCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public DataQualityUnlinkedListItemViewModel? SelectedUnlinkedNote
+    {
+        get => _selectedUnlinkedNote;
+        set
+        {
+            if (SetProperty(ref _selectedUnlinkedNote, value))
+            {
+                LinkSelectedUnlinkedNoteCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public CompanyOptionViewModel? SelectedQualityCompany
+    {
+        get => _selectedQualityCompany;
+        set
+        {
+            if (SetProperty(ref _selectedQualityCompany, value))
+            {
+                LinkSelectedUnlinkedDocumentCommand.RaiseCanExecuteChanged();
+                LinkSelectedUnlinkedNoteCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public DataQualityDuplicateGroupViewModel? SelectedDuplicateGroup
+    {
+        get => _selectedDuplicateGroup;
+        set
+        {
+            if (SetProperty(ref _selectedDuplicateGroup, value))
+            {
+                SelectedDuplicateKeepDocument = value?.Documents.FirstOrDefault();
+                ArchiveDuplicateGroupCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public DataQualityDuplicateDocumentViewModel? SelectedDuplicateKeepDocument
+    {
+        get => _selectedDuplicateKeepDocument;
+        set
+        {
+            if (SetProperty(ref _selectedDuplicateKeepDocument, value))
+            {
+                ArchiveDuplicateGroupCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public DataQualityArtifactGapViewModel? SelectedEvidenceGap
+    {
+        get => _selectedEvidenceGap;
+        set
+        {
+            if (SetProperty(ref _selectedEvidenceGap, value))
+            {
+                OpenEvidenceGapCommand.RaiseCanExecuteChanged();
     public string AgentQuery
     {
         get => _agentQuery;
@@ -799,6 +908,7 @@ public sealed class MainViewModel : ViewModelBase
         await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        await LoadDataQualityReportAsync();
         LoadAutomationTemplates();
         await LoadImportInboxSettingsAsync();
         await _importInboxWatcher.ReloadAsync();
@@ -932,6 +1042,7 @@ public sealed class MainViewModel : ViewModelBase
         NotesFilterCompany ??= NoteFilterCompanies.First();
 
         SelectedSearchCompany ??= NoteFilterCompanies.First();
+        SelectedQualityCompany ??= CompanyOptions.FirstOrDefault();
         SelectedAskVaultCompany ??= NoteFilterCompanies.FirstOrDefault();
 
         AvailableTags.Clear();
@@ -2224,6 +2335,110 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         SearchStatusMessage = $"{result.ResultType} results are searchable, but this build does not yet have a dedicated detail view.";
+    }
+
+    private async Task LoadDataQualityReportAsync()
+    {
+        var report = await _dataQualityService.GetReportAsync();
+
+        DataQualityDuplicateGroups.Clear();
+        foreach (var duplicateGroup in report.Duplicates)
+        {
+            var docs = duplicateGroup.Documents.Select(d => new DataQualityDuplicateDocumentViewModel
+            {
+                Id = d.Id,
+                Title = d.Title,
+                ImportedAt = FormatDate(d.ImportedAt)
+            }).ToList();
+
+            DataQualityDuplicateGroups.Add(new DataQualityDuplicateGroupViewModel
+            {
+                ContentHash = duplicateGroup.ContentHash,
+                DisplayLabel = $"{duplicateGroup.ContentHash[..Math.Min(12, duplicateGroup.ContentHash.Length)]}… ({docs.Count})",
+                Documents = docs
+            });
+        }
+
+        DataQualityUnlinkedDocuments.Clear();
+        foreach (var item in report.UnlinkedDocuments)
+        {
+            DataQualityUnlinkedDocuments.Add(new DataQualityUnlinkedListItemViewModel { Id = item.Id, Title = item.Title, CreatedAt = FormatDate(item.CreatedAt) });
+        }
+
+        DataQualityUnlinkedNotes.Clear();
+        foreach (var item in report.UnlinkedNotes)
+        {
+            DataQualityUnlinkedNotes.Add(new DataQualityUnlinkedListItemViewModel { Id = item.Id, Title = item.Title, CreatedAt = FormatDate(item.CreatedAt) });
+        }
+
+        DataQualityEvidenceGaps.Clear();
+        foreach (var item in report.EvidenceGaps)
+        {
+            DataQualityEvidenceGaps.Add(new DataQualityArtifactGapViewModel { ArtifactId = item.ArtifactId, Title = item.Title, CreatedAt = FormatDate(item.CreatedAt) });
+        }
+
+        DataQualityMetricIssues.Clear();
+        foreach (var item in report.MetricEvidenceIssues)
+        {
+            DataQualityMetricIssues.Add(new DataQualityMetricIssueViewModel { MetricId = item.MetricId, MetricKey = item.MetricKey, RecordedAt = FormatDate(item.RecordedAt) });
+        }
+
+        DataQualitySnippetIssues.Clear();
+        foreach (var item in report.SnippetIssues)
+        {
+            var parent = !string.IsNullOrWhiteSpace(item.DocumentId) ? $"Doc: {item.DocumentId}" : (!string.IsNullOrWhiteSpace(item.SourceId) ? $"Source: {item.SourceId}" : "(missing parent)");
+            DataQualitySnippetIssues.Add(new DataQualitySnippetIssueViewModel { SnippetId = item.SnippetId, Locator = item.Locator, ParentReference = parent });
+        }
+
+        DataQualityStatusMessage = $"Duplicates: {DataQualityDuplicateGroups.Count}, unlinked docs: {DataQualityUnlinkedDocuments.Count}, unlinked notes: {DataQualityUnlinkedNotes.Count}, evidence gaps: {DataQualityEvidenceGaps.Count}.";
+    }
+
+    private async Task LinkSelectedUnlinkedDocumentAsync()
+    {
+        if (SelectedUnlinkedDocument is null || SelectedQualityCompany is null)
+        {
+            return;
+        }
+
+        await _dataQualityService.LinkDocumentToCompanyAsync(SelectedUnlinkedDocument.Id, SelectedQualityCompany.Id);
+        await LoadDocumentsAsync();
+        await LoadDataQualityReportAsync();
+    }
+
+    private async Task LinkSelectedUnlinkedNoteAsync()
+    {
+        if (SelectedUnlinkedNote is null || SelectedQualityCompany is null)
+        {
+            return;
+        }
+
+        await _dataQualityService.LinkNoteToCompanyAsync(SelectedUnlinkedNote.Id, SelectedQualityCompany.Id);
+        await LoadNotesAsync();
+        await LoadDataQualityReportAsync();
+    }
+
+    private async Task ArchiveDuplicateGroupAsync()
+    {
+        if (SelectedDuplicateGroup is null || SelectedDuplicateKeepDocument is null)
+        {
+            return;
+        }
+
+        await _dataQualityService.ArchiveDuplicateDocumentsAsync(SelectedDuplicateGroup.ContentHash, SelectedDuplicateKeepDocument.Id);
+        await LoadDocumentsAsync();
+        await LoadDataQualityReportAsync();
+    }
+
+    private void OpenSelectedEvidenceGap()
+    {
+        if (SelectedEvidenceGap is null)
+        {
+            return;
+        }
+
+        SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Agents", StringComparison.OrdinalIgnoreCase));
+        SelectedRunArtifact = RunArtifacts.FirstOrDefault(a => a.Id == SelectedEvidenceGap.ArtifactId);
+        AgentStatusMessage = $"Evidence gap artifact selected: {SelectedEvidenceGap.Title}";
     }
 
     private static string StripHighlight(string value) => value.Replace("<mark>", string.Empty, StringComparison.OrdinalIgnoreCase)
