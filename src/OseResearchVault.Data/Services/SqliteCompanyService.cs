@@ -1,5 +1,7 @@
 using Dapper;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
+using System.Text;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 
@@ -318,6 +320,249 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
             ORDER BY ar.started_at DESC",
             new { CompanyId = companyId }, cancellationToken: cancellationToken));
         return rows.ToList();
+    }
+
+    public async Task<PriceImportResult> ImportCompanyDailyPricesCsvAsync(string companyId, string csvFilePath, string? dateColumn = null, string? closeColumn = null, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(companyId))
+        {
+            throw new ArgumentException("Company is required.", nameof(companyId));
+        }
+
+        if (string.IsNullOrWhiteSpace(csvFilePath) || !File.Exists(csvFilePath))
+        {
+            throw new FileNotFoundException("CSV file was not found.", csvFilePath);
+        }
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+        var sourceId = Guid.NewGuid().ToString();
+        var documentId = Guid.NewGuid().ToString();
+        var csvText = await File.ReadAllTextAsync(csvFilePath, cancellationToken);
+        var rows = ParseCsvRows(csvText);
+        if (rows.Count == 0)
+        {
+            throw new InvalidOperationException("CSV file is empty.");
+        }
+
+        var header = rows[0];
+        var effectiveDateColumn = string.IsNullOrWhiteSpace(dateColumn) ? "date" : dateColumn.Trim();
+        var effectiveCloseColumn = string.IsNullOrWhiteSpace(closeColumn) ? "close" : closeColumn.Trim();
+        var dateIndex = FindColumnIndex(header, effectiveDateColumn);
+        var closeIndex = FindColumnIndex(header, effectiveCloseColumn);
+        var hasHeader = dateIndex >= 0 && closeIndex >= 0;
+        if (!hasHeader)
+        {
+            dateIndex = 0;
+            closeIndex = 1;
+        }
+
+        var importedCount = 0;
+        var skippedCount = 0;
+        var snapshotDirectory = Path.Combine(settings.VaultStorageDirectory, "snapshots");
+        Directory.CreateDirectory(snapshotDirectory);
+        var snapshotPath = Path.Combine(snapshotDirectory, $"price-import-{DateTime.UtcNow:yyyyMMddHHmmss}-{Path.GetFileName(csvFilePath)}");
+        File.Copy(csvFilePath, snapshotPath, overwrite: true);
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken);
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO source (id, workspace_id, company_id, name, source_type, url, fetched_at, retrieved_at, created_at, updated_at)
+              VALUES (@Id, @WorkspaceId, @CompanyId, @Name, 'file', @Url, @Now, @Now, @Now, @Now)",
+            new
+            {
+                Id = sourceId,
+                WorkspaceId = workspaceId,
+                CompanyId = companyId,
+                Name = $"Price CSV import ({Path.GetFileName(csvFilePath)})",
+                Url = $"file://{Path.GetFullPath(csvFilePath)}",
+                Now = now
+            }, transaction: tx, cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO document (id, workspace_id, source_id, company_id, title, doc_type, document_type, mime_type, file_path, imported_at, created_at, updated_at)
+              VALUES (@Id, @WorkspaceId, @SourceId, @CompanyId, @Title, 'csv', 'csv', 'text/csv', @FilePath, @Now, @Now, @Now)",
+            new
+            {
+                Id = documentId,
+                WorkspaceId = workspaceId,
+                SourceId = sourceId,
+                CompanyId = companyId,
+                Title = $"Price CSV ({Path.GetFileName(csvFilePath)})",
+                FilePath = snapshotPath,
+                Now = now
+            }, transaction: tx, cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO document_text (id, document_id, chunk_index, language, content, created_at, updated_at)
+              VALUES (@Id, @DocumentId, 0, 'en', @Content, @Now, @Now)",
+            new { Id = Guid.NewGuid().ToString(), DocumentId = documentId, Content = csvText, Now = now }, transaction: tx, cancellationToken: cancellationToken));
+
+        var startRow = hasHeader ? 1 : 0;
+        for (var i = startRow; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Count <= Math.Max(dateIndex, closeIndex))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            var dateValue = row[dateIndex].Trim();
+            var closeValue = row[closeIndex].Trim();
+            if (!TryNormalizeDate(dateValue, out var normalizedDate) || !double.TryParse(closeValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var close))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            await connection.ExecuteAsync(new CommandDefinition(
+                @"INSERT INTO price_daily (price_id, workspace_id, company_id, price_date, close, currency, source_id, created_at)
+                  VALUES (@PriceId, @WorkspaceId, @CompanyId, @PriceDate, @Close, @Currency, @SourceId, @CreatedAt)
+                  ON CONFLICT(workspace_id, company_id, price_date)
+                  DO UPDATE SET close = excluded.close, currency = excluded.currency, source_id = excluded.source_id",
+                new
+                {
+                    PriceId = Guid.NewGuid().ToString(),
+                    WorkspaceId = workspaceId,
+                    CompanyId = companyId,
+                    PriceDate = normalizedDate,
+                    Close = close,
+                    Currency = "NOK",
+                    SourceId = sourceId,
+                    CreatedAt = now
+                }, transaction: tx, cancellationToken: cancellationToken));
+
+            importedCount++;
+        }
+
+        await tx.CommitAsync(cancellationToken);
+        return new PriceImportResult { InsertedOrUpdatedCount = importedCount, SkippedCount = skippedCount, SourceId = sourceId, DocumentId = documentId };
+    }
+
+    public async Task<PriceDailyRecord?> GetLatestCompanyPriceAsync(string companyId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        return await connection.QuerySingleOrDefaultAsync<PriceDailyRecord>(new CommandDefinition(
+            @"SELECT price_id AS PriceId, workspace_id AS WorkspaceId, company_id AS CompanyId, price_date AS PriceDate,
+                     close, currency, source_id AS SourceId, created_at AS CreatedAt
+                FROM price_daily
+               WHERE company_id = @CompanyId
+            ORDER BY price_date DESC
+               LIMIT 1",
+            new { CompanyId = companyId }, cancellationToken: cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<PriceDailyRecord>> GetCompanyDailyPricesAsync(string companyId, int days = 90, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        var rows = await connection.QueryAsync<PriceDailyRecord>(new CommandDefinition(
+            @"SELECT price_id AS PriceId, workspace_id AS WorkspaceId, company_id AS CompanyId, price_date AS PriceDate,
+                     close, currency, source_id AS SourceId, created_at AS CreatedAt
+                FROM price_daily
+               WHERE company_id = @CompanyId
+            ORDER BY price_date DESC
+               LIMIT @Days",
+            new { CompanyId = companyId, Days = days }, cancellationToken: cancellationToken));
+        return rows.ToList();
+    }
+
+    private static int FindColumnIndex(IReadOnlyList<string> header, string name)
+    {
+        for (var i = 0; i < header.Count; i++)
+        {
+            if (string.Equals(header[i].Trim(), name, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static bool TryNormalizeDate(string value, out string isoDate)
+    {
+        isoDate = string.Empty;
+        if (DateTime.TryParseExact(value, ["yyyy-MM-dd", "yyyy/MM/dd", "dd.MM.yyyy", "dd/MM/yyyy", "MM/dd/yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            || DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out parsed))
+        {
+            isoDate = parsed.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static List<IReadOnlyList<string>> ParseCsvRows(string csv)
+    {
+        var rows = new List<IReadOnlyList<string>>();
+        var row = new List<string>();
+        var value = new StringBuilder();
+        var inQuotes = false;
+
+        for (var i = 0; i < csv.Length; i++)
+        {
+            var c = csv[i];
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < csv.Length && csv[i + 1] == '"')
+                    {
+                        value.Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        inQuotes = false;
+                    }
+                }
+                else
+                {
+                    value.Append(c);
+                }
+
+                continue;
+            }
+
+            switch (c)
+            {
+                case '"':
+                    inQuotes = true;
+                    break;
+                case ',':
+                    row.Add(value.ToString());
+                    value.Clear();
+                    break;
+                case '\r':
+                    break;
+                case '\n':
+                    row.Add(value.ToString());
+                    value.Clear();
+                    rows.Add(row.ToList());
+                    row.Clear();
+                    break;
+                default:
+                    value.Append(c);
+                    break;
+            }
+        }
+
+        if (value.Length > 0 || row.Count > 0)
+        {
+            row.Add(value.ToString());
+            rows.Add(row.ToList());
+        }
+
+        return rows;
     }
 
     private static async Task ReplaceCompanyTagsAsync(SqliteConnection connection, string companyId, IEnumerable<string> tagIds, string now, CancellationToken cancellationToken)

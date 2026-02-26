@@ -87,6 +87,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricUnit = string.Empty;
     private string _metricCurrency = string.Empty;
     private string _metricStatusMessage = "Track company metrics.";
+    private string _latestClosePrice = "-";
+    private string _latestCloseDate = "-";
     private string _selectedDocumentWorkspaceId = string.Empty;
     private string _dataQualityStatusMessage = "Run a report to detect vault data quality issues.";
     private DataQualityUnlinkedListItemViewModel? _selectedUnlinkedDocument;
@@ -188,6 +190,7 @@ public sealed class MainViewModel : ViewModelBase
         HubEvents = [];
         HubMetrics = [];
         AllHubMetrics = [];
+        HubPrices = [];
         MetricNameOptions = ["All"];
         HubAgentRuns = [];
         SearchResults = [];
@@ -274,6 +277,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> HubEvents { get; }
     public ObservableCollection<CompanyMetricListItemViewModel> HubMetrics { get; }
     public ObservableCollection<CompanyMetricListItemViewModel> AllHubMetrics { get; }
+    public ObservableCollection<PriceDailyListItemViewModel> HubPrices { get; }
     public ObservableCollection<string> MetricNameOptions { get; }
     public ObservableCollection<string> HubAgentRuns { get; }
     public ObservableCollection<SearchResultListItemViewModel> SearchResults { get; }
@@ -535,6 +539,8 @@ public sealed class MainViewModel : ViewModelBase
     public string MetricUnit { get => _metricUnit; set => SetProperty(ref _metricUnit, value); }
     public string MetricCurrency { get => _metricCurrency; set => SetProperty(ref _metricCurrency, value); }
     public string MetricStatusMessage { get => _metricStatusMessage; set => SetProperty(ref _metricStatusMessage, value); }
+    public string LatestClosePrice { get => _latestClosePrice; set => SetProperty(ref _latestClosePrice, value); }
+    public string LatestCloseDate { get => _latestCloseDate; set => SetProperty(ref _latestCloseDate, value); }
     public CompanyMetricListItemViewModel? SelectedHubMetric
     {
         get => _selectedHubMetric;
@@ -1448,6 +1454,9 @@ public sealed class MainViewModel : ViewModelBase
         HubEvents.Clear();
         HubMetrics.Clear();
         AllHubMetrics.Clear();
+        HubPrices.Clear();
+        LatestClosePrice = "-";
+        LatestCloseDate = "-";
         MetricNameOptions.Clear();
         MetricNameOptions.Add("All");
         MetricPeriodFilter = string.Empty;
@@ -1464,6 +1473,8 @@ public sealed class MainViewModel : ViewModelBase
         var eventsList = await _companyService.GetCompanyEventsAsync(companyId);
         var metrics = await _companyService.GetCompanyMetricsAsync(companyId);
         var runs = await _companyService.GetCompanyAgentRunsAsync(companyId);
+        var latestPrice = await _companyService.GetLatestCompanyPriceAsync(companyId);
+        var dailyPrices = await _companyService.GetCompanyDailyPricesAsync(companyId, 90);
 
         foreach (var doc in docs)
         {
@@ -1499,6 +1510,22 @@ public sealed class MainViewModel : ViewModelBase
                 SnippetText = item.SnippetText,
                 Value = item.Value
             });
+        }
+
+        foreach (var price in dailyPrices)
+        {
+            HubPrices.Add(new PriceDailyListItemViewModel
+            {
+                PriceDate = price.PriceDate,
+                CloseDisplay = price.Close.ToString("0.####", CultureInfo.InvariantCulture),
+                Currency = price.Currency
+            });
+        }
+
+        if (latestPrice is not null)
+        {
+            LatestClosePrice = $"{latestPrice.Close.ToString("0.####", CultureInfo.InvariantCulture)} {latestPrice.Currency}";
+            LatestCloseDate = latestPrice.PriceDate;
         }
 
         foreach (var metricName in await _companyService.GetCompanyMetricNamesAsync(companyId))
@@ -2540,6 +2567,18 @@ public sealed class MainViewModel : ViewModelBase
         await LoadNotesAsync();
         await LoadCompanyHubAsync(companyId);
         InvestmentMemoStatusMessage = "Investment memo created.";
+    }
+
+    public async Task<string> ImportPricesCsvAsync(string csvFilePath, string? dateColumn = null, string? closeColumn = null)
+    {
+        if (SelectedHubCompany is null)
+        {
+            return "Select a company first.";
+        }
+
+        var result = await _companyService.ImportCompanyDailyPricesCsvAsync(SelectedHubCompany.Id, csvFilePath, dateColumn, closeColumn);
+        await LoadCompanyHubAsync(SelectedHubCompany.Id);
+        return $"Imported {result.InsertedOrUpdatedCount} rows ({result.SkippedCount} skipped).";
     }
 
     private static string StripHighlight(string value) => value.Replace("<mark>", string.Empty, StringComparison.OrdinalIgnoreCase)

@@ -358,5 +358,37 @@ public partial class MainWindow : Window
         MessageBox.Show(this, summary, "Fetch announcements", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    private async void ImportPricesCsv_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedHubCompany is null)
+        {
+            MessageBox.Show(this, "Select a company first.", "Import prices", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        try
+        {
+            var message = await _viewModel.ImportPricesCsvAsync(dialog.FileName);
+            MessageBox.Show(this, message, "Import prices", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to import prices:
+{ex.Message}", "Import prices", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
 
 }
