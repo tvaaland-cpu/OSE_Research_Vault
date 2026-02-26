@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json;
+using System.Windows;
+using OseResearchVault.App.Services;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 
@@ -14,6 +17,15 @@ public sealed class MainViewModel : ViewModelBase
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
     private readonly IAutomationTemplateService _automationTemplateService;
+    private readonly IAppSettingsService _appSettingsService;
+    private readonly IImportInboxWatcher _importInboxWatcher;
+    private readonly INotificationService _notificationService;
+    private readonly IAutomationService _automationService;
+    private readonly IAskMyVaultService _askMyVaultService;
+    private readonly IMetricService _metricService;
+    private readonly IMetricConflictDialogService _metricConflictDialogService;
+    private readonly IUserDialogService _dialogService;
+    private readonly IMetricService _metricService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -47,6 +59,11 @@ public sealed class MainViewModel : ViewModelBase
     private DateTime? _searchDateTo;
     private SearchResultListItemViewModel? _selectedSearchResult;
     private string _searchStatusMessage = "Search notes, documents, snippets, and artifacts.";
+    private string _askVaultQuery = string.Empty;
+    private CompanyOptionViewModel? _selectedAskVaultCompany;
+    private AskVaultContextItemViewModel? _selectedAskVaultContextItem;
+    private string _askVaultPrompt = string.Empty;
+    private string _askVaultStatusMessage = "Preview retrieval context and prompt before running an LLM.";
     private AgentTemplateListItemViewModel? _selectedAgentTemplate;
     private AgentRunListItemViewModel? _selectedAgentRun;
     private ArtifactListItemViewModel? _selectedRunArtifact;
@@ -61,10 +78,48 @@ public sealed class MainViewModel : ViewModelBase
     private string _agentStatusMessage = "Create reusable agent templates and run history.";
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
+    private string _metricName = string.Empty;
+    private string _metricPeriod = string.Empty;
+    private string _metricValue = string.Empty;
+    private string _metricUnit = string.Empty;
+    private string _metricCurrency = string.Empty;
+    private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
     private string _automationStatusMessage = "Create automations from built-in templates.";
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAutomationTemplateService automationTemplateService)
+    private string _importInboxFolderPath = string.Empty;
+    private bool _importInboxEnabled;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAppSettingsService appSettingsService, IImportInboxWatcher importInboxWatcher)
+    private NotificationListItemViewModel? _selectedNotification;
+    private string _toastMessage = string.Empty;
+    private bool _isToastVisible;
+    private CancellationTokenSource? _toastCts;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, INotificationService notificationService)
+    private AutomationListItemViewModel? _selectedAutomation;
+    private AutomationRunListItemViewModel? _selectedAutomationRun;
+    private string _automationStatusMessage = "Create and schedule automations.";
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAutomationService automationService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAskMyVaultService askMyVaultService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService, IMetricConflictDialogService metricConflictDialogService)
+    private string _evidenceCoverageLabel = "0 evidence links";
+    private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
+    private string _selectedDocumentWorkspaceId = string.Empty;
+    private CompanyMetricListItemViewModel? _selectedHubMetric;
+    private string _selectedMetricNameFilter = "All";
+    private string _metricPeriodFilter = string.Empty;
+    private string _metricEditName = string.Empty;
+    private string _metricEditPeriod = string.Empty;
+    private string _metricEditValue = string.Empty;
+    private string _metricEditUnit = string.Empty;
+    private string _metricEditCurrency = string.Empty;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IUserDialogService dialogService)
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
@@ -73,6 +128,15 @@ public sealed class MainViewModel : ViewModelBase
         _searchService = searchService;
         _agentService = agentService;
         _automationTemplateService = automationTemplateService;
+        _appSettingsService = appSettingsService;
+        _importInboxWatcher = importInboxWatcher;
+        _notificationService = notificationService;
+        _automationService = automationService;
+        _askMyVaultService = askMyVaultService;
+        _metricService = metricService;
+        _metricConflictDialogService = metricConflictDialogService;
+        _dialogService = dialogService;
+        _metricService = metricService;
 
         NavigationItems =
         [
@@ -84,7 +148,9 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Notes"),
             new NavigationItem("Agents"),
             new NavigationItem("Automations"),
+            new NavigationItem("Ask My Vault"),
             new NavigationItem("Search"),
+            new NavigationItem("Inbox"),
             new NavigationItem("Settings")
         ];
 
@@ -101,8 +167,11 @@ public sealed class MainViewModel : ViewModelBase
         HubNotes = [];
         HubEvents = [];
         HubMetrics = [];
+        AllHubMetrics = [];
+        MetricNameOptions = ["All"];
         HubAgentRuns = [];
         SearchResults = [];
+        AskVaultContextItems = [];
         WorkspaceOptions = [];
         AgentTemplates = [];
         AgentRuns = [];
@@ -110,7 +179,11 @@ public sealed class MainViewModel : ViewModelBase
         RunArtifacts = [];
         AutomationTemplates = [];
         Automations = [];
+        ArtifactEvidenceLinks = [];
         DocumentSnippets = [];
+        Notifications = [];
+        Automations = [];
+        AutomationRuns = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
@@ -124,13 +197,30 @@ public sealed class MainViewModel : ViewModelBase
         NewNoteCommand = new RelayCommand(ClearNoteForm);
         ExecuteSearchCommand = new RelayCommand(() => _ = ExecuteSearchAsync(), () => !string.IsNullOrWhiteSpace(SearchQuery));
         OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
+        RetrieveAskVaultCommand = new RelayCommand(() => _ = RetrieveAskVaultPreviewAsync(), () => !string.IsNullOrWhiteSpace(AskVaultQuery));
+        OpenAskVaultContextItemCommand = new RelayCommand(() => OpenAskVaultContextItem(SelectedAskVaultContextItem), () => SelectedAskVaultContextItem is not null);
         SaveAgentTemplateCommand = new RelayCommand(() => _ = SaveAgentTemplateAsync(), () => !string.IsNullOrWhiteSpace(AgentName));
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
-        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
+        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
+        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
         CreateDailyReviewAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("daily-review"));
         CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-watchlist-scan"));
         CreateImportInboxAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("import-inbox-hourly"));
+        SaveImportInboxSettingsCommand = new RelayCommand(() => _ = SaveImportInboxSettingsAsync());
+
+        _importInboxWatcher.FileImported += OnImportInboxFileImported;
+        RefreshInboxCommand = new RelayCommand(() => _ = LoadNotificationsAsync());
+        MarkNotificationReadCommand = new RelayCommand(() => _ = MarkNotificationReadAsync(), () => SelectedNotification is not null && !SelectedNotification.IsRead);
+        NewAutomationCommand = new RelayCommand(() => _ = NewAutomationAsync());
+        EditAutomationCommand = new RelayCommand(() => _ = EditAutomationAsync(), () => SelectedAutomation is not null);
+        DeleteAutomationCommand = new RelayCommand(() => _ = DeleteAutomationAsync(), () => SelectedAutomation is not null);
+        RunAutomationNowCommand = new RelayCommand(() => _ = RunAutomationNowAsync(), () => SelectedAutomation is not null);
+        ToggleAutomationEnabledCommand = new RelayCommand(() => _ = ToggleAutomationEnabledAsync(), () => SelectedAutomation is not null);
+        SaveMetricCommand = new RelayCommand(() => _ = SaveMetricAsync(), () => SelectedHubCompany is not null && !string.IsNullOrWhiteSpace(MetricName) && !string.IsNullOrWhiteSpace(MetricPeriod));
+        OpenMetricEvidenceCommand = new RelayCommand(param => _ = OpenMetricEvidenceAsync(param as CompanyMetricListItemViewModel));
+        SaveMetricCommand = new RelayCommand(() => _ = SaveSelectedMetricAsync(), () => SelectedHubMetric is not null && !string.IsNullOrWhiteSpace(MetricEditName));
+        DeleteMetricCommand = new RelayCommand(() => _ = DeleteSelectedMetricAsync(), () => SelectedHubMetric is not null);
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -147,9 +237,12 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> HubDocuments { get; }
     public ObservableCollection<string> HubNotes { get; }
     public ObservableCollection<string> HubEvents { get; }
-    public ObservableCollection<string> HubMetrics { get; }
+    public ObservableCollection<CompanyMetricListItemViewModel> HubMetrics { get; }
+    public ObservableCollection<CompanyMetricListItemViewModel> AllHubMetrics { get; }
+    public ObservableCollection<string> MetricNameOptions { get; }
     public ObservableCollection<string> HubAgentRuns { get; }
     public ObservableCollection<SearchResultListItemViewModel> SearchResults { get; }
+    public ObservableCollection<AskVaultContextItemViewModel> AskVaultContextItems { get; }
     public ObservableCollection<WorkspaceOptionViewModel> WorkspaceOptions { get; }
     public ObservableCollection<AgentTemplateListItemViewModel> AgentTemplates { get; }
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
@@ -157,7 +250,12 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
     public ObservableCollection<AutomationTemplateListItemViewModel> AutomationTemplates { get; }
     public ObservableCollection<AutomationListItemViewModel> Automations { get; }
+    public ObservableCollection<ArtifactEvidenceLinkListItemViewModel> ArtifactEvidenceLinks { get; }
+    public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
+    public ObservableCollection<NotificationListItemViewModel> Notifications { get; }
+    public ObservableCollection<AutomationListItemViewModel> Automations { get; }
+    public ObservableCollection<AutomationRunListItemViewModel> AutomationRuns { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
     public IReadOnlyList<string> SearchTypeOptions { get; }
@@ -172,6 +270,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewNoteCommand { get; }
     public RelayCommand ExecuteSearchCommand { get; }
     public RelayCommand OpenSearchResultCommand { get; }
+    public RelayCommand RetrieveAskVaultCommand { get; }
+    public RelayCommand OpenAskVaultContextItemCommand { get; }
     public RelayCommand SaveAgentTemplateCommand { get; }
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
@@ -179,6 +279,18 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand CreateDailyReviewAutomationCommand { get; }
     public RelayCommand CreateWeeklyWatchlistAutomationCommand { get; }
     public RelayCommand CreateImportInboxAutomationCommand { get; }
+    public RelayCommand SaveImportInboxSettingsCommand { get; }
+    public RelayCommand RefreshInboxCommand { get; }
+    public RelayCommand MarkNotificationReadCommand { get; }
+    public RelayCommand NewAutomationCommand { get; }
+    public RelayCommand EditAutomationCommand { get; }
+    public RelayCommand DeleteAutomationCommand { get; }
+    public RelayCommand RunAutomationNowCommand { get; }
+    public RelayCommand ToggleAutomationEnabledCommand { get; }
+    public RelayCommand SaveMetricCommand { get; }
+    public RelayCommand OpenMetricEvidenceCommand { get; }
+    public RelayCommand SaveMetricCommand { get; }
+    public RelayCommand DeleteMetricCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -194,6 +306,10 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
                 OnPropertyChanged(nameof(IsAutomationsSelected));
+                OnPropertyChanged(nameof(IsSettingsSelected));
+                OnPropertyChanged(nameof(IsInboxSelected));
+                OnPropertyChanged(nameof(IsAutomationsSelected));
+                OnPropertyChanged(nameof(IsAskMyVaultSelected));
             }
         }
     }
@@ -205,6 +321,38 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
     public bool IsAutomationsSelected => IsSelected("Automations");
+    public bool IsSettingsSelected => IsSelected("Settings");
+    public bool IsInboxSelected => IsSelected("Inbox");
+    public bool IsAutomationsSelected => IsSelected("Automations");
+
+    public AutomationListItemViewModel? SelectedAutomation
+    {
+        get => _selectedAutomation;
+        set
+        {
+            if (SetProperty(ref _selectedAutomation, value))
+            {
+                EditAutomationCommand.RaiseCanExecuteChanged();
+                DeleteAutomationCommand.RaiseCanExecuteChanged();
+                RunAutomationNowCommand.RaiseCanExecuteChanged();
+                ToggleAutomationEnabledCommand.RaiseCanExecuteChanged();
+                _ = LoadAutomationRunsAsync(value?.Id);
+            }
+        }
+    }
+
+    public AutomationRunListItemViewModel? SelectedAutomationRun
+    {
+        get => _selectedAutomationRun;
+        set => SetProperty(ref _selectedAutomationRun, value);
+    }
+
+    public string AutomationStatusMessage
+    {
+        get => _automationStatusMessage;
+        set => SetProperty(ref _automationStatusMessage, value);
+    }
+    public bool IsAskMyVaultSelected => IsSelected("Ask My Vault");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -268,10 +416,88 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedHubCompany, value))
             {
+                SaveMetricCommand.RaiseCanExecuteChanged();
                 _ = LoadCompanyHubAsync(value?.Id);
             }
         }
     }
+
+    public string MetricName
+    {
+        get => _metricName;
+        set
+        {
+            if (SetProperty(ref _metricName, value))
+            {
+                SaveMetricCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string MetricPeriod
+    {
+        get => _metricPeriod;
+        set
+        {
+            if (SetProperty(ref _metricPeriod, value))
+            {
+                SaveMetricCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string MetricValue { get => _metricValue; set => SetProperty(ref _metricValue, value); }
+    public string MetricUnit { get => _metricUnit; set => SetProperty(ref _metricUnit, value); }
+    public string MetricCurrency { get => _metricCurrency; set => SetProperty(ref _metricCurrency, value); }
+    public string MetricStatusMessage { get => _metricStatusMessage; set => SetProperty(ref _metricStatusMessage, value); }
+    public CompanyMetricListItemViewModel? SelectedHubMetric
+    {
+        get => _selectedHubMetric;
+        set
+        {
+            if (SetProperty(ref _selectedHubMetric, value))
+            {
+                SaveMetricCommand.RaiseCanExecuteChanged();
+                DeleteMetricCommand.RaiseCanExecuteChanged();
+
+                MetricEditName = value?.MetricName ?? string.Empty;
+                MetricEditPeriod = value?.Period ?? string.Empty;
+                MetricEditValue = value?.ValueDisplay ?? string.Empty;
+                MetricEditUnit = value?.Unit ?? string.Empty;
+                MetricEditCurrency = value?.Currency ?? string.Empty;
+            }
+        }
+    }
+
+    public string SelectedMetricNameFilter
+    {
+        get => _selectedMetricNameFilter;
+        set
+        {
+            if (SetProperty(ref _selectedMetricNameFilter, value))
+            {
+                ApplyMetricFilters();
+            }
+        }
+    }
+
+    public string MetricPeriodFilter
+    {
+        get => _metricPeriodFilter;
+        set
+        {
+            if (SetProperty(ref _metricPeriodFilter, value))
+            {
+                ApplyMetricFilters();
+            }
+        }
+    }
+
+    public string MetricEditName { get => _metricEditName; set { if (SetProperty(ref _metricEditName, value)) SaveMetricCommand.RaiseCanExecuteChanged(); } }
+    public string MetricEditPeriod { get => _metricEditPeriod; set => SetProperty(ref _metricEditPeriod, value); }
+    public string MetricEditValue { get => _metricEditValue; set => SetProperty(ref _metricEditValue, value); }
+    public string MetricEditUnit { get => _metricEditUnit; set => SetProperty(ref _metricEditUnit, value); }
+    public string MetricEditCurrency { get => _metricEditCurrency; set => SetProperty(ref _metricEditCurrency, value); }
 
     public string DocumentStatusMessage
     {
@@ -394,6 +620,39 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public string AskVaultQuery
+    {
+        get => _askVaultQuery;
+        set
+        {
+            if (SetProperty(ref _askVaultQuery, value))
+            {
+                RetrieveAskVaultCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public CompanyOptionViewModel? SelectedAskVaultCompany
+    {
+        get => _selectedAskVaultCompany;
+        set => SetProperty(ref _selectedAskVaultCompany, value);
+    }
+
+    public AskVaultContextItemViewModel? SelectedAskVaultContextItem
+    {
+        get => _selectedAskVaultContextItem;
+        set
+        {
+            if (SetProperty(ref _selectedAskVaultContextItem, value))
+            {
+                OpenAskVaultContextItemCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string AskVaultPrompt { get => _askVaultPrompt; set => SetProperty(ref _askVaultPrompt, value); }
+    public string AskVaultStatusMessage { get => _askVaultStatusMessage; set => SetProperty(ref _askVaultStatusMessage, value); }
+
 
     public AgentTemplateListItemViewModel? SelectedAgentTemplate
     {
@@ -428,23 +687,64 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedRunArtifact, value))
             {
                 SaveArtifactCommand.RaiseCanExecuteChanged();
+                _ = LoadEvidenceLinksForSelectedArtifactAsync(value);
+                _ = RefreshArtifactEvidenceAsync();
             }
         }
     }
 
     public CompanyOptionViewModel? SelectedRunCompany { get => _selectedRunCompany; set => SetProperty(ref _selectedRunCompany, value); }
+
+    public NotificationListItemViewModel? SelectedNotification
+    {
+        get => _selectedNotification;
+        set
+        {
+            if (SetProperty(ref _selectedNotification, value))
+            {
+                MarkNotificationReadCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
+    public bool IsToastVisible { get => _isToastVisible; set => SetProperty(ref _isToastVisible, value); }
     public string AgentName { get => _agentName; set { if (SetProperty(ref _agentName, value)) { SaveAgentTemplateCommand.RaiseCanExecuteChanged(); } } }
     public string AgentGoal { get => _agentGoal; set => SetProperty(ref _agentGoal, value); }
     public string AgentInstructions { get => _agentInstructions; set => SetProperty(ref _agentInstructions, value); }
     public string AgentAllowedTools { get => _agentAllowedTools; set => SetProperty(ref _agentAllowedTools, value); }
     public string AgentOutputSchema { get => _agentOutputSchema; set => SetProperty(ref _agentOutputSchema, value); }
     public string AgentEvidencePolicy { get => _agentEvidencePolicy; set => SetProperty(ref _agentEvidencePolicy, value); }
-    public string AgentQuery { get => _agentQuery; set => SetProperty(ref _agentQuery, value); }
+    public string AgentQuery
+    {
+        get => _agentQuery;
+        set
+        {
+            if (SetProperty(ref _agentQuery, value))
+            {
+                RunAgentCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
+    public string ImportInboxFolderPath { get => _importInboxFolderPath; set => SetProperty(ref _importInboxFolderPath, value); }
+    public bool ImportInboxEnabled { get => _importInboxEnabled; set => SetProperty(ref _importInboxEnabled, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
     public string AutomationStatusMessage { get => _automationStatusMessage; set => SetProperty(ref _automationStatusMessage, value); }
+    public string EvidenceCoverageLabel
+    {
+        get => _evidenceCoverageLabel;
+        private set => SetProperty(ref _evidenceCoverageLabel, value);
+    }
+
+    public bool HasEvidenceCoverage => ArtifactEvidenceLinks.Count > 0;
+    public string ArtifactEvidenceStatusMessage { get => _artifactEvidenceStatusMessage; set => SetProperty(ref _artifactEvidenceStatusMessage, value); }
     public bool CanCreateSnippet => SelectedDocument is not null;
+
+    public Task<IReadOnlyList<AgentTemplateRecord>> GetAgentTemplatesAsync(CancellationToken cancellationToken = default) => _agentService.GetAgentsAsync(cancellationToken);
+
+    public Task<IReadOnlyList<CompanyRecord>> GetCompaniesAsync(CancellationToken cancellationToken = default) => _companyService.GetCompaniesAsync(cancellationToken);
 
     public async Task ImportDocumentsAsync(IEnumerable<string> filePaths)
     {
@@ -496,9 +796,62 @@ public sealed class MainViewModel : ViewModelBase
         await LoadDocumentsAsync();
         await LoadNotesAsync();
         await LoadSearchFiltersAsync();
+        await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
         LoadAutomationTemplates();
+        await LoadImportInboxSettingsAsync();
+        await _importInboxWatcher.ReloadAsync();
+    }
+
+
+    private async Task LoadImportInboxSettingsAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        ImportInboxFolderPath = settings.ImportInboxFolderPath;
+        ImportInboxEnabled = settings.ImportInboxEnabled;
+    }
+
+    private async Task SaveImportInboxSettingsAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        settings.ImportInboxFolderPath = ImportInboxFolderPath.Trim();
+        settings.ImportInboxEnabled = ImportInboxEnabled;
+        await _appSettingsService.SaveSettingsAsync(settings);
+        await _importInboxWatcher.ReloadAsync();
+        DocumentStatusMessage = "Import Inbox settings saved.";
+    }
+
+    private void OnImportInboxFileImported(object? sender, ImportInboxEvent e)
+    {
+        _ = Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            DocumentStatusMessage = e.Succeeded
+                ? $"Imported {e.FileName}"
+                : $"Import failed for {e.FileName}: {e.ErrorMessage}";
+
+            await LoadDocumentsAsync();
+        await LoadNotificationsAsync();
+        await LoadAutomationsAsync();
+    }
+
+    private async Task EnsureAskMyVaultAgentAsync()
+    {
+        var existing = (await _agentService.GetAgentsAsync()).FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            return;
+        }
+
+        await _agentService.CreateAgentAsync(new AgentTemplateUpsertRequest
+        {
+            Name = "AskMyVault",
+            Goal = "Answer questions from local vault evidence",
+            Instructions = "Use retrieved context and include citations like [DOC:<document_id>|chunk:<i>] and [SNIP:<id>] when available.",
+            AllowedToolsJson = "[\"local_search\",\"prompt_build\"]",
+            OutputSchema = "markdown",
+            EvidencePolicy = "citation_required_when_available"
+        });
     }
 
 
@@ -579,6 +932,7 @@ public sealed class MainViewModel : ViewModelBase
         NotesFilterCompany ??= NoteFilterCompanies.First();
 
         SelectedSearchCompany ??= NoteFilterCompanies.First();
+        SelectedAskVaultCompany ??= NoteFilterCompanies.FirstOrDefault();
 
         AvailableTags.Clear();
         foreach (var tag in tags)
@@ -587,6 +941,86 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         SelectedHubCompany ??= CompanyOptions.FirstOrDefault();
+    }
+
+    private async Task RetrieveAskVaultPreviewAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AskVaultQuery))
+        {
+            return;
+        }
+
+        AskVaultStatusMessage = "Retrieving context...";
+        var result = await _askMyVaultService.BuildPreviewAsync(new AskMyVaultPreviewRequest
+        {
+            Query = AskVaultQuery,
+            CompanyId = SelectedAskVaultCompany?.Id,
+            MaxContextItems = 24
+        });
+
+        AskVaultContextItems.Clear();
+        foreach (var item in result.ContextItems)
+        {
+            AskVaultContextItems.Add(new AskVaultContextItemViewModel
+            {
+                ResultType = item.ResultType,
+                EntityId = item.EntityId,
+                Title = item.Title,
+                Excerpt = item.Excerpt,
+                Citation = item.Citation,
+                CompanyName = item.CompanyName
+            });
+        }
+
+        SelectedAskVaultContextItem = AskVaultContextItems.FirstOrDefault();
+        AskVaultPrompt = result.Prompt;
+        AskVaultStatusMessage = $"Retrieved {AskVaultContextItems.Count} context item(s).";
+    }
+
+    private void OpenAskVaultContextItem(AskVaultContextItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (string.Equals(item.ResultType, "note", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Notes", StringComparison.OrdinalIgnoreCase));
+            SelectedNote = Notes.FirstOrDefault(n => n.Id == item.EntityId) ?? AllNotes.FirstOrDefault(n => n.Id == item.EntityId);
+            AskVaultStatusMessage = SelectedNote is null
+                ? "Note context selected, but it is not loaded in the current note list."
+                : $"Opened note context: {item.Title}";
+            return;
+        }
+
+        if (string.Equals(item.ResultType, "document", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+            SelectedDocument = Documents.FirstOrDefault(d => d.Id == item.EntityId);
+            if (SelectedDocument is not null)
+            {
+                DetailsTextPreview = item.Excerpt;
+                AskVaultStatusMessage = $"Opened document context: {item.Title}";
+            }
+            else
+            {
+                AskVaultStatusMessage = "Document context selected, but it is not available in the current document list.";
+            }
+
+            return;
+        }
+
+        if (string.Equals(item.ResultType, "snippet", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.ResultType, "artifact", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Search", StringComparison.OrdinalIgnoreCase));
+            SearchQuery = item.Title;
+            AskVaultStatusMessage = $"{item.ResultType} context selected. Use Search to inspect full details.";
+            return;
+        }
+
+        AskVaultStatusMessage = "Context item selected, but no direct navigation target is available yet.";
     }
 
     private void PopulateCompanyForm(CompanyListItemViewModel? company)
@@ -784,16 +1218,72 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    private async Task SaveMetricAsync()
+    {
+        if (SelectedHubCompany is null)
+        {
+            MetricStatusMessage = "Select a company first.";
+            return;
+        }
+
+        if (!double.TryParse(MetricValue, out var parsedValue))
+        {
+            MetricStatusMessage = "Metric value must be a number.";
+            return;
+        }
+
+        var request = new MetricUpsertRequest
+        {
+            CompanyId = SelectedHubCompany.Id,
+            MetricName = MetricName,
+            Period = MetricPeriod,
+            Value = parsedValue,
+            Unit = MetricUnit,
+            Currency = MetricCurrency
+        };
+
+        var result = await _metricService.UpsertMetricAsync(request);
+        if (result.Status == MetricUpsertStatus.ConflictDetected)
+        {
+            var choice = _metricConflictDialogService.ShowMetricConflictDialog();
+            if (choice == MetricConflictDialogChoice.Cancel)
+            {
+                MetricStatusMessage = "Metric save canceled.";
+                return;
+            }
+
+            var resolution = choice == MetricConflictDialogChoice.Replace
+                ? MetricConflictResolution.ReplaceExisting
+                : MetricConflictResolution.CreateAnyway;
+
+            result = await _metricService.UpsertMetricAsync(request, resolution);
+        }
+
+        MetricStatusMessage = result.Status switch
+        {
+            MetricUpsertStatus.Replaced => $"Metric '{result.NormalizedMetricName}' replaced.",
+            MetricUpsertStatus.CreatedAnyway => $"Metric '{result.NormalizedMetricName}' saved as an additional entry.",
+            _ => $"Metric '{result.NormalizedMetricName}' saved."
+        };
+
+        await LoadCompanyHubAsync(SelectedHubCompany.Id);
+    }
+
     private async Task LoadCompanyHubAsync(string? companyId)
     {
         HubDocuments.Clear();
         HubNotes.Clear();
         HubEvents.Clear();
         HubMetrics.Clear();
+        AllHubMetrics.Clear();
+        MetricNameOptions.Clear();
+        MetricNameOptions.Add("All");
+        MetricPeriodFilter = string.Empty;
         HubAgentRuns.Clear();
 
         if (string.IsNullOrWhiteSpace(companyId))
         {
+            SelectedHubMetric = null;
             return;
         }
 
@@ -820,13 +1310,143 @@ public sealed class MainViewModel : ViewModelBase
 
         foreach (var item in metrics)
         {
-            HubMetrics.Add(item);
+            AllHubMetrics.Add(new CompanyMetricListItemViewModel
+            {
+                Id = item.Id,
+                MetricName = item.MetricName,
+                Period = item.Period,
+                ValueDisplay = item.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                Unit = item.Unit ?? string.Empty,
+                Currency = item.Currency ?? string.Empty,
+                EvidenceDisplay = BuildEvidenceDisplay(item),
+                CreatedAt = FormatDate(item.CreatedAt),
+                DocumentId = item.DocumentId,
+                SnippetId = item.SnippetId,
+                Locator = item.Locator,
+                SourceTitle = item.SourceTitle,
+                SnippetText = item.SnippetText,
+                Value = item.Value
+            });
         }
+
+        foreach (var metricName in await _companyService.GetCompanyMetricNamesAsync(companyId))
+        {
+            MetricNameOptions.Add(metricName);
+        }
+
+        SelectedMetricNameFilter = MetricNameOptions.FirstOrDefault() ?? "All";
+        ApplyMetricFilters();
+        SelectedHubMetric = HubMetrics.FirstOrDefault();
 
         foreach (var item in runs)
         {
             HubAgentRuns.Add(item);
         }
+    }
+
+    private void ApplyMetricFilters()
+    {
+        var filtered = AllHubMetrics.Where(metric =>
+            (string.IsNullOrWhiteSpace(SelectedMetricNameFilter) || string.Equals(SelectedMetricNameFilter, "All", StringComparison.OrdinalIgnoreCase) || string.Equals(metric.MetricName, SelectedMetricNameFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrWhiteSpace(MetricPeriodFilter) || metric.Period.Contains(MetricPeriodFilter, StringComparison.OrdinalIgnoreCase)));
+
+        HubMetrics.Clear();
+        foreach (var metric in filtered)
+        {
+            HubMetrics.Add(metric);
+        }
+
+        if (SelectedHubMetric is not null && HubMetrics.All(m => m.Id != SelectedHubMetric.Id))
+        {
+            SelectedHubMetric = HubMetrics.FirstOrDefault();
+        }
+    }
+
+    private async Task SaveSelectedMetricAsync()
+    {
+        if (SelectedHubMetric is null)
+        {
+            return;
+        }
+
+        double? parsed = null;
+        if (!string.IsNullOrWhiteSpace(MetricEditValue))
+        {
+            if (!double.TryParse(MetricEditValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedValue))
+            {
+                CompanyStatusMessage = "Metric value must be numeric.";
+                return;
+            }
+
+            parsed = parsedValue;
+        }
+
+        await _companyService.UpdateCompanyMetricAsync(SelectedHubMetric.Id, new CompanyMetricUpdateRequest
+        {
+            MetricName = MetricEditName,
+            Period = MetricEditPeriod,
+            Value = parsed,
+            Unit = MetricEditUnit,
+            Currency = MetricEditCurrency
+        });
+
+        CompanyStatusMessage = "Metric updated.";
+        await LoadCompanyHubAsync(SelectedHubCompany?.Id);
+    }
+
+    private async Task DeleteSelectedMetricAsync()
+    {
+        if (SelectedHubMetric is null)
+        {
+            return;
+        }
+
+        await _companyService.DeleteCompanyMetricAsync(SelectedHubMetric.Id);
+        CompanyStatusMessage = "Metric deleted.";
+        await LoadCompanyHubAsync(SelectedHubCompany?.Id);
+    }
+
+    private async Task OpenMetricEvidenceAsync(CompanyMetricListItemViewModel? metric)
+    {
+        if (metric is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(metric.DocumentId))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+            await LoadDocumentsAsync();
+            SelectedDocument = Documents.FirstOrDefault(d => d.Id == metric.DocumentId);
+            if (!string.IsNullOrWhiteSpace(metric.SnippetText))
+            {
+                DetailsTextPreview = metric.SnippetText;
+            }
+
+            DocumentStatusMessage = "Opened metric evidence in Documents (best-effort snippet highlight).";
+            return;
+        }
+
+        var sourceLine = string.IsNullOrWhiteSpace(metric.SourceTitle) ? "(unknown)" : metric.SourceTitle;
+        _dialogService.ShowInfo(
+            $"Snippet: {metric.SnippetText}{Environment.NewLine}{Environment.NewLine}Locator: {metric.Locator}{Environment.NewLine}Source: {sourceLine}",
+            "Metric Evidence Snippet");
+    }
+
+    private static string BuildEvidenceDisplay(CompanyMetricRecord item)
+    {
+        var locator = string.IsNullOrWhiteSpace(item.Locator) ? "(no locator)" : item.Locator;
+        if (!string.IsNullOrWhiteSpace(item.DocumentTitle))
+        {
+            return $"{item.DocumentTitle} — {locator}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.SourceTitle))
+        {
+            return $"{item.SourceTitle} — {locator}";
+        }
+
+        return locator;
     }
 
     private async Task LoadDocumentDetailsAsync(string? documentId)
@@ -888,6 +1508,12 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        if (snippetText.Trim().Length < 10)
+        {
+            DocumentStatusMessage = "Snippet text must be at least 10 characters.";
+            return;
+        }
+
         var workspaceId = _selectedDocumentWorkspaceId;
         if (string.IsNullOrWhiteSpace(workspaceId))
         {
@@ -923,10 +1549,38 @@ public sealed class MainViewModel : ViewModelBase
             DocumentSnippets.Add(new DocumentSnippetListItemViewModel
             {
                 Id = snippet.Id,
+                CompanyId = snippet.CompanyId,
+                DocumentTitle = SelectedDocument?.Title ?? string.Empty,
                 Locator = snippet.Locator,
                 Text = snippet.Text,
                 CreatedAt = FormatDate(snippet.CreatedAt)
             });
+        }
+    }
+
+    public async Task CreateMetricFromSnippetAsync(string snippetId, string companyId, string metricName, string period, double value, string? unit, string? currency)
+    {
+        if (string.IsNullOrWhiteSpace(snippetId) || string.IsNullOrWhiteSpace(companyId) || string.IsNullOrWhiteSpace(metricName) || string.IsNullOrWhiteSpace(period))
+        {
+            DocumentStatusMessage = "Metric fields are required.";
+            return;
+        }
+
+        await _metricService.CreateMetricAsync(new MetricCreateRequest
+        {
+            SnippetId = snippetId,
+            CompanyId = companyId,
+            MetricName = metricName,
+            Period = period,
+            Value = value,
+            Unit = unit,
+            Currency = currency
+        });
+
+        DocumentStatusMessage = "Metric created from snippet.";
+        if (SelectedHubCompany?.Id == companyId)
+        {
+            await LoadCompanyHubAsync(companyId);
         }
     }
 
@@ -1000,6 +1654,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 Id = run.Id,
                 AgentName = run.AgentName,
+                CompanyId = run.CompanyId ?? string.Empty,
                 CompanyName = run.CompanyName ?? string.Empty,
                 Query = run.Query,
                 Status = run.Status,
@@ -1070,8 +1725,21 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RunAgentAsync()
     {
-        if (SelectedAgentTemplate is null)
+        var askMyVault = SelectedAgentTemplate;
+        if (askMyVault is null || !string.Equals(askMyVault.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase))
         {
+            askMyVault = AgentTemplates.FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+            if (askMyVault is null)
+            {
+                await EnsureAskMyVaultAgentAsync();
+                await LoadAgentsAsync();
+                askMyVault = AgentTemplates.FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        if (askMyVault is null)
+        {
+            AgentStatusMessage = "Unable to find AskMyVault template.";
             return;
         }
 
@@ -1081,31 +1749,87 @@ public sealed class MainViewModel : ViewModelBase
             .Distinct()
             .ToList();
 
-        var runId = await _agentService.CreateRunAsync(new AgentRunRequest
+        if (SelectedAgentTemplate is not null)
         {
-            AgentId = SelectedAgentTemplate.Id,
+            var runId = await _agentService.CreateRunAsync(new AgentRunRequest
+            {
+                AgentId = SelectedAgentTemplate.Id,
+                CompanyId = SelectedRunCompany?.Id,
+                Query = AgentQuery,
+                SelectedDocumentIds = selectedDocIds
+            });
+
+            AgentStatusMessage = "Run executed and output artifact captured.";
+            await LoadAgentRunsAsync();
+            SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+            return;
+        }
+
+        var askResult = await _agentService.ExecuteAskMyVaultAsync(new AskMyVaultRequest
+        {
+            AgentId = askMyVault.Id,
             CompanyId = SelectedRunCompany?.Id,
             Query = AgentQuery,
             SelectedDocumentIds = selectedDocIds
         });
 
-        AgentStatusMessage = "Run executed and output artifact captured.";
         await LoadAgentRunsAsync();
         SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+
+        var run = (await _agentService.GetRunsAsync(SelectedAgentTemplate.Id)).FirstOrDefault(x => x.Id == runId);
+        var wasSuccessful = string.Equals(run?.Status, "success", StringComparison.OrdinalIgnoreCase);
+        var title = wasSuccessful
+            ? $"Automation '{SelectedAgentTemplate.Name}' completed"
+            : $"Automation '{SelectedAgentTemplate.Name}' failed";
+        var body = wasSuccessful
+            ? "Output artifact captured."
+            : string.IsNullOrWhiteSpace(run?.Error)
+                ? "Automation failed with an unknown error."
+                : run.Error;
+
+        await _notificationService.AddNotification(wasSuccessful ? "info" : "error", title, body);
+        await LoadNotificationsAsync();
+        ShowToast(title);
+
+        AgentStatusMessage = wasSuccessful
+            ? "Run executed and output artifact captured."
+            : $"Run failed: {body}";
+        AgentStatusMessage = "Answer generated and run history captured.";
+        await LoadAgentRunsAsync();
+        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+        var toolCalls = await _agentService.GetToolCallsAsync(runId);
+        if (toolCalls.Any(x => x.Name == "citation_parse" && x.OutputJson.Contains("\"citationCount\":0", StringComparison.OrdinalIgnoreCase)))
+        {
+            AgentStatusMessage = "Answer generated and run history captured. No citations detected.";
+        }
+        AgentStatusMessage = askResult.CitationsDetected
+            ? "Answer generated and stored in run history."
+            : "Answer generated and stored in run history. No citations detected.";
+        await LoadAgentRunsAsync();
+        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == askResult.RunId);
     }
 
     private async Task LoadRunNotebookAsync(AgentRunListItemViewModel? run)
     {
         RunArtifacts.Clear();
+        ArtifactEvidenceLinks.Clear();
+        EvidenceCoverageLabel = "0 evidence links";
+        OnPropertyChanged(nameof(HasEvidenceCoverage));
         if (run is null)
         {
             RunInputSummary = "Select a run to view notebook details.";
+            ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
             return;
         }
 
         var selectedDocIds = JsonSerializer.Deserialize<List<string>>(run.SelectedDocumentIdsJson) ?? [];
         RunInputSummary = $"Query: {run.Query}{Environment.NewLine}Selected docs: {(selectedDocIds.Count == 0 ? "(none)" : string.Join(", ", selectedDocIds))}";
-        RunToolCallsSummary = "No tool calls yet (MVP).";
+        var toolCalls = await _agentService.GetToolCallsAsync(run.Id);
+        RunToolCallsSummary = toolCalls.Count == 0
+            ? "No tool calls captured."
+            : string.Join(Environment.NewLine, toolCalls.Select(tc => $"{tc.Name} [{tc.Status}]"));
+            ? "No tool calls recorded."
+            : string.Join(Environment.NewLine, toolCalls.Select(x => $"{x.Name} ({x.Status})"));
 
         var artifacts = await _agentService.GetArtifactsAsync(run.Id);
         foreach (var artifact in artifacts)
@@ -1114,6 +1838,41 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         SelectedRunArtifact = RunArtifacts.FirstOrDefault();
+    }
+
+    private async Task LoadEvidenceLinksForSelectedArtifactAsync(ArtifactListItemViewModel? artifact)
+    {
+        ArtifactEvidenceLinks.Clear();
+        if (artifact is null)
+        {
+            EvidenceCoverageLabel = "0 evidence links";
+            OnPropertyChanged(nameof(HasEvidenceCoverage));
+            return;
+        }
+
+        var evidenceLinks = await _evidenceService.ListEvidenceLinksByArtifactAsync(artifact.Id);
+        foreach (var link in evidenceLinks)
+        {
+            var locatorValue = string.IsNullOrWhiteSpace(link.Locator) ? "(missing locator)" : link.Locator.Trim();
+            var snippetIdValue = string.IsNullOrWhiteSpace(link.SnippetId) ? "-" : link.SnippetId.Trim();
+            var title = string.IsNullOrWhiteSpace(link.DocumentTitle) ? "Untitled document" : link.DocumentTitle.Trim();
+
+            ArtifactEvidenceLinks.Add(new ArtifactEvidenceLinkListItemViewModel
+            {
+                Id = link.Id,
+                DocumentTitle = title,
+                Locator = locatorValue,
+                SnippetId = snippetIdValue,
+                Quote = string.IsNullOrWhiteSpace(link.Quote) ? link.SnippetText ?? string.Empty : link.Quote,
+                HasMissingLocator = string.IsNullOrWhiteSpace(link.Locator),
+                Citation = $"[{title} | {locatorValue} | {snippetIdValue}]"
+            });
+        }
+
+        EvidenceCoverageLabel = ArtifactEvidenceLinks.Count == 1
+            ? "1 evidence link"
+            : $"{ArtifactEvidenceLinks.Count} evidence links";
+        OnPropertyChanged(nameof(HasEvidenceCoverage));
     }
 
     private async Task SaveArtifactAsync()
@@ -1125,6 +1884,308 @@ public sealed class MainViewModel : ViewModelBase
 
         await _agentService.UpdateArtifactContentAsync(SelectedRunArtifact.Id, SelectedRunArtifact.Content);
         AgentStatusMessage = "Artifact output saved.";
+    }
+
+    private async Task LoadNotificationsAsync(bool unreadOnly = false)
+    {
+        var workspaceId = SelectedSearchWorkspace?.Id ?? WorkspaceOptions.FirstOrDefault()?.Id ?? string.Empty;
+        var notifications = await _notificationService.ListNotifications(workspaceId, unreadOnly);
+        Notifications.Clear();
+        foreach (var notification in notifications)
+        {
+            Notifications.Add(new NotificationListItemViewModel
+            {
+                NotificationId = notification.NotificationId,
+                Level = notification.Level,
+                Title = notification.Title,
+                Body = notification.Body,
+                CreatedAt = FormatDate(notification.CreatedAt),
+                IsRead = notification.IsRead
+            });
+        }
+    }
+
+    private async Task MarkNotificationReadAsync()
+    {
+        if (SelectedNotification is null || SelectedNotification.IsRead)
+    private async Task LoadAutomationsAsync()
+    {
+        var records = await _automationService.GetAutomationsAsync();
+        Automations.Clear();
+        foreach (var record in records)
+        {
+            var schedule = string.Equals(record.ScheduleType, "daily", StringComparison.OrdinalIgnoreCase)
+                ? $"Daily {record.DailyTime}"
+                : $"Every {record.IntervalMinutes ?? 60} min";
+
+            Automations.Add(new AutomationListItemViewModel
+            {
+                Id = record.Id,
+                Name = record.Name,
+                Enabled = record.Enabled,
+                Schedule = schedule,
+                NextRun = FormatDate(record.NextRunAt),
+                LastRun = FormatDate(record.LastRunAt),
+                LastStatus = record.LastStatus ?? string.Empty
+            });
+        }
+
+        SelectedAutomation = Automations.FirstOrDefault();
+    }
+
+    private async Task LoadAutomationRunsAsync(string? automationId)
+    {
+        AutomationRuns.Clear();
+        if (string.IsNullOrWhiteSpace(automationId))
+        {
+            return;
+        }
+
+        var runs = await _automationService.GetRunsAsync(automationId);
+        foreach (var run in runs)
+        {
+            AutomationRuns.Add(new AutomationRunListItemViewModel
+            {
+                Id = run.Id,
+                TriggerType = run.TriggerType,
+                Status = run.Status,
+                StartedAt = FormatDate(run.StartedAt),
+                FinishedAt = FormatDate(run.FinishedAt)
+            });
+        }
+
+        SelectedAutomationRun = AutomationRuns.FirstOrDefault();
+    }
+
+    private async Task NewAutomationAsync()
+    {
+        AutomationRequested?.Invoke(this, new AutomationEditorRequestedEventArgs(null));
+        await Task.CompletedTask;
+    }
+
+    private async Task EditAutomationAsync()
+    {
+        if (SelectedAutomation is null)
+        {
+            return;
+        }
+
+        var records = await _automationService.GetAutomationsAsync();
+        var existing = records.FirstOrDefault(x => x.Id == SelectedAutomation.Id);
+        AutomationRequested?.Invoke(this, new AutomationEditorRequestedEventArgs(existing));
+    }
+
+    public event EventHandler<AutomationEditorRequestedEventArgs>? AutomationRequested;
+
+    public async Task SaveAutomationFromDialogAsync(AutomationRecord? existing, AutomationUpsertRequest request)
+    {
+        if (existing is null)
+        {
+            await _automationService.CreateAutomationAsync(request);
+            AutomationStatusMessage = "Automation created.";
+        }
+        else
+        {
+            await _automationService.UpdateAutomationAsync(existing.Id, request);
+            AutomationStatusMessage = "Automation updated.";
+        }
+
+        await LoadAutomationsAsync();
+    }
+
+    private async Task DeleteAutomationAsync()
+    {
+        if (SelectedAutomation is null)
+    public IReadOnlyList<DocumentListItemViewModel> GetSuggestedDocumentsForSelectedArtifact()
+    {
+        var selectedRunCompanyId = SelectedAgentRun?.CompanyId;
+        if (!string.IsNullOrWhiteSpace(selectedRunCompanyId))
+        {
+            var sameCompany = Documents
+                .Where(d => string.Equals(d.CompanyId, selectedRunCompanyId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (sameCompany.Count > 0)
+            {
+                return sameCompany;
+            }
+        }
+
+        return Documents.ToList();
+    }
+
+    public Task<DocumentRecord?> GetDocumentDetailsForEvidenceAsync(string documentId)
+        => _documentImportService.GetDocumentDetailsAsync(documentId);
+
+    public async Task CreateSnippetAndLinkToArtifactAsync(string artifactId, string documentId, string locator, string snippetText, string? companyId)
+    {
+        if (string.IsNullOrWhiteSpace(artifactId))
+        {
+            AgentStatusMessage = "Select an artifact before linking evidence.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            AgentStatusMessage = "Select a document to create evidence.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(locator) || string.IsNullOrWhiteSpace(snippetText))
+        {
+            AgentStatusMessage = "Select text and provide a locator before saving evidence.";
+            return;
+        }
+
+        var detail = await _documentImportService.GetDocumentDetailsAsync(documentId);
+        if (detail is null || string.IsNullOrWhiteSpace(detail.WorkspaceId))
+        {
+            AgentStatusMessage = "Unable to load document details for evidence creation.";
+            return;
+        }
+
+        await _evidenceService.AddSnippetAndLinkToArtifactAsync(
+            detail.WorkspaceId,
+            artifactId,
+            documentId,
+            string.IsNullOrWhiteSpace(companyId) ? null : companyId,
+            sourceId: null,
+            locator,
+            snippetText,
+            createdBy: "user",
+            relevanceScore: null);
+
+        AgentStatusMessage = "Snippet created and linked to artifact.";
+    public async Task RefreshArtifactEvidenceAsync()
+    {
+        ArtifactEvidenceLinks.Clear();
+
+        if (SelectedRunArtifact is null)
+        {
+            ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
+            return;
+        }
+
+        var evidenceLinks = await _evidenceService.ListEvidenceLinksByArtifactAsync(SelectedRunArtifact.Id);
+        foreach (var evidenceLink in evidenceLinks)
+        {
+            ArtifactEvidenceLinks.Add(new ArtifactEvidenceListItemViewModel
+            {
+                EvidenceLinkId = evidenceLink.Id,
+                SnippetId = evidenceLink.SnippetId,
+                DocumentId = evidenceLink.DocumentId,
+                SnippetPreview = BuildSnippetPreview(evidenceLink.SnippetText, evidenceLink.Quote),
+                Locator = string.IsNullOrWhiteSpace(evidenceLink.Locator) ? "—" : evidenceLink.Locator,
+                DocumentTitle = string.IsNullOrWhiteSpace(evidenceLink.DocumentTitle) ? "(unknown)" : evidenceLink.DocumentTitle,
+                CompanyName = string.IsNullOrWhiteSpace(evidenceLink.CompanyName) ? string.Empty : evidenceLink.CompanyName
+            });
+        }
+
+        ArtifactEvidenceStatusMessage = ArtifactEvidenceLinks.Count == 0
+            ? "No evidence linked yet."
+            : $"{ArtifactEvidenceLinks.Count} evidence link(s).";
+    }
+
+    public async Task<IReadOnlyList<SnippetPickerListItemViewModel>> SearchSnippetsForLinkingAsync(string? companyId, string? documentId, string? query)
+    {
+        var snippets = await _evidenceService.SearchSnippetsAsync(companyId, documentId, query);
+        return snippets
+            .Select(static snippet => new SnippetPickerListItemViewModel
+            {
+                Id = snippet.Id,
+                DocumentId = snippet.DocumentId,
+                DocumentTitle = snippet.DocumentTitle,
+                Locator = snippet.Locator,
+                TextPreview = BuildPreview(snippet.Text)
+            })
+            .ToList();
+    }
+
+    public async Task LinkSnippetToSelectedArtifactAsync(string snippetId)
+    {
+        if (SelectedRunArtifact is null || string.IsNullOrWhiteSpace(snippetId))
+        {
+            return;
+        }
+
+        await _notificationService.MarkRead(SelectedNotification.NotificationId);
+        SelectedNotification.IsRead = true;
+        MarkNotificationReadCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ShowToast(string message)
+    {
+        _toastCts?.Cancel();
+        _toastCts = new CancellationTokenSource();
+
+        ToastMessage = message;
+        IsToastVisible = true;
+
+        _ = HideToastAsync(_toastCts.Token);
+    }
+
+    private async Task HideToastAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            IsToastVisible = false;
+        }
+        catch (TaskCanceledException)
+        {
+        }
+        await _automationService.DeleteAutomationAsync(SelectedAutomation.Id);
+        AutomationStatusMessage = "Automation deleted.";
+        await LoadAutomationsAsync();
+    }
+
+    private async Task RunAutomationNowAsync()
+    {
+        if (SelectedAutomation is null)
+        await _evidenceService.CreateEvidenceLinkAsync(SelectedRunArtifact.Id, snippetId, null, null, null, null);
+        await RefreshArtifactEvidenceAsync();
+        AgentStatusMessage = "Snippet linked to artifact.";
+    }
+
+    public async Task RemoveEvidenceLinkAsync(string evidenceLinkId)
+    {
+        if (string.IsNullOrWhiteSpace(evidenceLinkId))
+        {
+            return;
+        }
+
+        await _automationService.RunNowAsync(SelectedAutomation.Id);
+        AutomationStatusMessage = "Automation run triggered.";
+        await LoadAutomationsAsync();
+        SelectedAutomation = Automations.FirstOrDefault(x => x.Id == SelectedAutomation?.Id) ?? Automations.FirstOrDefault();
+    }
+
+    private async Task ToggleAutomationEnabledAsync()
+    {
+        if (SelectedAutomation is null)
+        await _evidenceService.DeleteEvidenceLinkAsync(evidenceLinkId);
+        await RefreshArtifactEvidenceAsync();
+        AgentStatusMessage = "Evidence link removed.";
+    }
+
+    public void OpenDocumentDetails(string? documentId)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            return;
+        }
+
+        var match = Documents.FirstOrDefault(d => string.Equals(d.Id, documentId, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            return;
+        }
+
+        await _automationService.SetAutomationEnabledAsync(SelectedAutomation.Id, !SelectedAutomation.Enabled);
+        await LoadAutomationsAsync();
+        SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+        SelectedDocument = match;
+        DocumentStatusMessage = $"Opened document: {match.Title}";
     }
 
     private void OpenSearchResult(SearchResultListItemViewModel? result)
@@ -1172,6 +2233,8 @@ public sealed class MainViewModel : ViewModelBase
 
     private static string? NullIfWhitespace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    public sealed record AutomationEditorRequestedEventArgs(AutomationRecord? ExistingAutomation);
+
     private static string FormatDate(string? dateString)
     {
         if (string.IsNullOrWhiteSpace(dateString))
@@ -1182,5 +2245,26 @@ public sealed class MainViewModel : ViewModelBase
         return DateTime.TryParse(dateString, out var parsed)
             ? parsed.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
             : dateString;
+    }
+
+    private static string BuildSnippetPreview(string? snippetText, string? quote)
+    {
+        if (!string.IsNullOrWhiteSpace(quote))
+        {
+            return BuildPreview(quote);
+        }
+
+        return BuildPreview(snippetText);
+    }
+
+    private static string BuildPreview(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "(no snippet text)";
+        }
+
+        var trimmed = text.Trim();
+        return trimmed.Length <= 200 ? trimmed : $"{trimmed[..200]}…";
     }
 }

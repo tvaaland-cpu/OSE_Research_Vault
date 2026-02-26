@@ -1,0 +1,51 @@
+<Window x:Class="OseResearchVault.App.CreateSnippetAndLinkDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create Snippet &amp; Link"
+        Height="620"
+        Width="860"
+        MinHeight="520"
+        MinWidth="760"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,10" VerticalAlignment="Center" Text="Document" FontWeight="SemiBold"/>
+        <ComboBox x:Name="DocumentSelector" Grid.Row="0" Grid.Column="1" Margin="0,0,0,10" DisplayMemberPath="DisplayName" SelectionChanged="DocumentSelector_OnSelectionChanged"/>
+
+        <Grid Grid.Row="1" Grid.ColumnSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Extracted text preview (select text to create snippet)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <TextBox x:Name="PreviewText" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" SelectionChanged="PreviewText_OnSelectionChanged"/>
+
+            <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                <TextBlock Text="Locator" FontWeight="SemiBold"/>
+                <TextBox x:Name="LocatorText" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Margin="0,10,0,0">
+                <TextBlock Text="Snippet text" FontWeight="SemiBold"/>
+                <TextBox x:Name="SnippetText" Margin="0,4,0,0" Height="120" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"/>
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Width="90" IsCancel="True" Margin="0,0,8,0"/>
+            <Button Content="Create &amp; Link" Width="130" IsDefault="True" Click="CreateAndLink_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>
