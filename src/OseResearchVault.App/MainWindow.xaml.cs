@@ -103,4 +103,15 @@ public partial class MainWindow : Window
         await _viewModel.CreateSnippetForSelectedDocumentAsync(dialog.Locator, dialog.SnippetTextValue, dialog.CompanyId);
     }
 
+    private void CopyCitation_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.Tag is not string citation || string.IsNullOrWhiteSpace(citation))
+        {
+            return;
+        }
+
+        Clipboard.SetText(citation);
+        _viewModel.AgentStatusMessage = "Citation copied to clipboard.";
+    }
+
 }

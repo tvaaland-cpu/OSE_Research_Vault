@@ -88,6 +88,75 @@ public sealed class EvidenceServiceTests
         }
     }
 
+    [Fact]
+    public async Task CreateSnippetAsync_RejectsTextShorterThanTenCharacters()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var ids = await SeedWorkspaceDataAsync(settingsService);
+
+            var service = new EvidenceService(
+                new SqliteSnippetRepository(settingsService),
+                new SqliteEvidenceLinkRepository(settingsService));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateSnippetAsync(
+                    ids.WorkspaceId,
+                    ids.DocumentId,
+                    ids.CompanyId,
+                    sourceId: null,
+                    locator: "p=1",
+                    text: "too short",
+                    createdBy: "unit-test"));
+
+            Assert.Equal("Snippet text must be at least 10 characters.", exception.Message);
+        }
+        finally
+        {
+            Cleanup(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task CreateEvidenceLinkAsync_RejectsMissingSnippetAndDocumentLocator()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var ids = await SeedWorkspaceDataAsync(settingsService);
+
+            var service = new EvidenceService(
+                new SqliteSnippetRepository(settingsService),
+                new SqliteEvidenceLinkRepository(settingsService));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.CreateEvidenceLinkAsync(
+                    ids.ArtifactId,
+                    snippetId: null,
+                    documentId: null,
+                    locator: null,
+                    quote: "No reference",
+                    relevanceScore: 0.5));
+
+            Assert.Equal("Evidence link must include snippet_id or document_id + locator.", exception.Message);
+        }
+        finally
+        {
+            Cleanup(tempRoot);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var path = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));

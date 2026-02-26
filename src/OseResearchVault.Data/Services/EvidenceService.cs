@@ -27,6 +27,11 @@ public sealed class EvidenceService(ISnippetRepository snippetRepository, IEvide
             throw new InvalidOperationException("Snippet text cannot be empty.");
         }
 
+        if (text.Trim().Length < 10)
+        {
+            throw new InvalidOperationException("Snippet text must be at least 10 characters.");
+        }
+
         return await snippetRepository.CreateSnippetAsync(
             workspaceId,
             documentId,
@@ -48,7 +53,12 @@ public sealed class EvidenceService(ISnippetRepository snippetRepository, IEvide
         var hasSnippet = !string.IsNullOrWhiteSpace(snippetId);
         var hasDocumentLocator = !string.IsNullOrWhiteSpace(documentId) && !string.IsNullOrWhiteSpace(locator);
 
-        if (hasSnippet == hasDocumentLocator)
+        if (!hasSnippet && !hasDocumentLocator)
+        {
+            throw new InvalidOperationException("Evidence link must include snippet_id or document_id + locator.");
+        }
+
+        if (hasSnippet && hasDocumentLocator)
         {
             throw new InvalidOperationException("Evidence link must target either snippet_id or document_id + locator.");
         }
