@@ -10,6 +10,14 @@ public partial class AiImportDialog : Window
         InitializeComponent();
     }
 
+    public AiImportDialog(string? initialResponse) : this()
+    {
+        if (!string.IsNullOrWhiteSpace(initialResponse))
+        {
+            ResponseTextBox.Text = initialResponse;
+        }
+    }
+
     public AiImportRequest? Request { get; private set; }
 
     private void Save_OnClick(object sender, RoutedEventArgs e)
