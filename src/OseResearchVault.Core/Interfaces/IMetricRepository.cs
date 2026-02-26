@@ -2,9 +2,8 @@ using OseResearchVault.Core.Models;
 
 namespace OseResearchVault.Core.Interfaces;
 
-public interface IMetricService
+public interface IMetricRepository
 {
-    Task<string> CreateMetricAsync(MetricCreateRequest request, CancellationToken cancellationToken = default);
     Task<Metric> CreateMetricAsync(
         string workspaceId,
         string companyId,
