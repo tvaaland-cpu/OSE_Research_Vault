@@ -13,6 +13,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly INotificationService _notificationService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -61,8 +62,12 @@ public sealed class MainViewModel : ViewModelBase
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private NotificationListItemViewModel? _selectedNotification;
+    private string _toastMessage = string.Empty;
+    private bool _isToastVisible;
+    private CancellationTokenSource? _toastCts;
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, INotificationService notificationService)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
@@ -70,6 +75,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _notificationService = notificationService;
 
         NavigationItems =
         [
@@ -81,6 +87,7 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Notes"),
             new NavigationItem("Agents"),
             new NavigationItem("Search"),
+            new NavigationItem("Inbox"),
             new NavigationItem("Settings")
         ];
 
@@ -105,6 +112,7 @@ public sealed class MainViewModel : ViewModelBase
         RunSelectableDocuments = [];
         RunArtifacts = [];
         DocumentSnippets = [];
+        Notifications = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
@@ -122,6 +130,8 @@ public sealed class MainViewModel : ViewModelBase
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        RefreshInboxCommand = new RelayCommand(() => _ = LoadNotificationsAsync());
+        MarkNotificationReadCommand = new RelayCommand(() => _ = MarkNotificationReadAsync(), () => SelectedNotification is not null && !SelectedNotification.IsRead);
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -147,6 +157,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
+    public ObservableCollection<NotificationListItemViewModel> Notifications { get; }
     public IReadOnlyList<string> NoteTypes { get; }
     public IReadOnlyList<string> NoteFilterTypes { get; }
     public IReadOnlyList<string> SearchTypeOptions { get; }
@@ -165,6 +176,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand RefreshInboxCommand { get; }
+    public RelayCommand MarkNotificationReadCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -179,6 +192,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsInboxSelected));
             }
         }
     }
@@ -189,6 +203,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsInboxSelected => IsSelected("Inbox");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -417,6 +432,21 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     public CompanyOptionViewModel? SelectedRunCompany { get => _selectedRunCompany; set => SetProperty(ref _selectedRunCompany, value); }
+
+    public NotificationListItemViewModel? SelectedNotification
+    {
+        get => _selectedNotification;
+        set
+        {
+            if (SetProperty(ref _selectedNotification, value))
+            {
+                MarkNotificationReadCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
+    public bool IsToastVisible { get => _isToastVisible; set => SetProperty(ref _isToastVisible, value); }
     public string AgentName { get => _agentName; set { if (SetProperty(ref _agentName, value)) { SaveAgentTemplateCommand.RaiseCanExecuteChanged(); } } }
     public string AgentGoal { get => _agentGoal; set => SetProperty(ref _agentGoal, value); }
     public string AgentInstructions { get => _agentInstructions; set => SetProperty(ref _agentInstructions, value); }
@@ -481,6 +511,7 @@ public sealed class MainViewModel : ViewModelBase
         await LoadSearchFiltersAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        await LoadNotificationsAsync();
     }
 
     private async Task SaveSelectedDocumentCompanyAsync()
@@ -1042,9 +1073,27 @@ public sealed class MainViewModel : ViewModelBase
             SelectedDocumentIds = selectedDocIds
         });
 
-        AgentStatusMessage = "Run executed and output artifact captured.";
         await LoadAgentRunsAsync();
         SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+
+        var run = (await _agentService.GetRunsAsync(SelectedAgentTemplate.Id)).FirstOrDefault(x => x.Id == runId);
+        var wasSuccessful = string.Equals(run?.Status, "success", StringComparison.OrdinalIgnoreCase);
+        var title = wasSuccessful
+            ? $"Automation '{SelectedAgentTemplate.Name}' completed"
+            : $"Automation '{SelectedAgentTemplate.Name}' failed";
+        var body = wasSuccessful
+            ? "Output artifact captured."
+            : string.IsNullOrWhiteSpace(run?.Error)
+                ? "Automation failed with an unknown error."
+                : run.Error;
+
+        await _notificationService.AddNotification(wasSuccessful ? "info" : "error", title, body);
+        await LoadNotificationsAsync();
+        ShowToast(title);
+
+        AgentStatusMessage = wasSuccessful
+            ? "Run executed and output artifact captured."
+            : $"Run failed: {body}";
     }
 
     private async Task LoadRunNotebookAsync(AgentRunListItemViewModel? run)
@@ -1078,6 +1127,60 @@ public sealed class MainViewModel : ViewModelBase
 
         await _agentService.UpdateArtifactContentAsync(SelectedRunArtifact.Id, SelectedRunArtifact.Content);
         AgentStatusMessage = "Artifact output saved.";
+    }
+
+    private async Task LoadNotificationsAsync(bool unreadOnly = false)
+    {
+        var workspaceId = SelectedSearchWorkspace?.Id ?? WorkspaceOptions.FirstOrDefault()?.Id ?? string.Empty;
+        var notifications = await _notificationService.ListNotifications(workspaceId, unreadOnly);
+        Notifications.Clear();
+        foreach (var notification in notifications)
+        {
+            Notifications.Add(new NotificationListItemViewModel
+            {
+                NotificationId = notification.NotificationId,
+                Level = notification.Level,
+                Title = notification.Title,
+                Body = notification.Body,
+                CreatedAt = FormatDate(notification.CreatedAt),
+                IsRead = notification.IsRead
+            });
+        }
+    }
+
+    private async Task MarkNotificationReadAsync()
+    {
+        if (SelectedNotification is null || SelectedNotification.IsRead)
+        {
+            return;
+        }
+
+        await _notificationService.MarkRead(SelectedNotification.NotificationId);
+        SelectedNotification.IsRead = true;
+        MarkNotificationReadCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ShowToast(string message)
+    {
+        _toastCts?.Cancel();
+        _toastCts = new CancellationTokenSource();
+
+        ToastMessage = message;
+        IsToastVisible = true;
+
+        _ = HideToastAsync(_toastCts.Token);
+    }
+
+    private async Task HideToastAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            IsToastVisible = false;
+        }
+        catch (TaskCanceledException)
+        {
+        }
     }
 
     private void OpenSearchResult(SearchResultListItemViewModel? result)

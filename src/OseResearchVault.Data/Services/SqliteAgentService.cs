@@ -110,6 +110,7 @@ public sealed class SqliteAgentService(
                      COALESCE(ar.model_provider, '') AS ModelProvider,
                      COALESCE(ar.model_name, '') AS ModelName,
                      COALESCE(ar.model_parameters_json, '{}') AS ModelParametersJson,
+                     COALESCE(ar.error, '') AS Error,
                      ar.started_at AS StartedAt,
                      ar.finished_at AS FinishedAt
                 FROM agent_run ar
