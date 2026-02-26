@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.App.Logging;
@@ -14,6 +15,7 @@ public partial class App : Application
 {
     public static IServiceProvider? Services { get; private set; }
     private ServiceProvider? _serviceProvider;
+    private ILogger<App>? _startupLogger;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -24,8 +26,10 @@ public partial class App : Application
         _serviceProvider = services.BuildServiceProvider();
         Services = _serviceProvider;
 
-        var logger = _serviceProvider.GetRequiredService<ILogger<App>>();
-        logger.LogInformation("Starting OSE Research Vault");
+        RegisterUnhandledExceptionHandlers();
+
+        _startupLogger = _serviceProvider.GetRequiredService<ILogger<App>>();
+        _startupLogger.LogInformation("Starting OSE Research Vault");
 
         var databaseInitializer = _serviceProvider.GetRequiredService<IDatabaseInitializer>();
         var workspaceService = _serviceProvider.GetRequiredService<IWorkspaceService>();
@@ -53,6 +57,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        UnregisterUnhandledExceptionHandlers();
+
         if (_serviceProvider is not null)
         {
             var scheduler = _serviceProvider.GetService<IAutomationScheduler>();
@@ -119,6 +125,7 @@ public partial class App : Application
         services.AddSingleton<IBackupService, SqliteBackupService>();
         services.AddSingleton<IRestoreService, SqliteRestoreService>();
         services.AddSingleton<IShareLogService, SqliteShareLogService>();
+        services.AddSingleton<IDiagnosticsService, DiagnosticsService>();
         services.AddSingleton<IMemoPublishService, SqliteMemoPublishService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
@@ -148,5 +155,76 @@ public partial class App : Application
         services.AddTransient<SelectOrCreateWorkspaceDialog>();
         services.AddTransient<WorkspaceManagerDialog>();
         services.AddSingleton<MainWindow>();
+    }
+
+    private void RegisterUnhandledExceptionHandlers()
+    {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+    }
+
+    private void UnregisterUnhandledExceptionHandlers()
+    {
+        DispatcherUnhandledException -= OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException -= OnAppDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        LogCriticalException("DispatcherUnhandledException", e.Exception);
+    }
+
+    private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception exception)
+        {
+            LogCriticalException("AppDomainUnhandledException", exception);
+            return;
+        }
+
+        _startupLogger?.LogCritical("Unhandled exception from AppDomain: {ExceptionObject}; IsTerminating={IsTerminating}", e.ExceptionObject, e.IsTerminating);
+    }
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogCriticalException("UnobservedTaskException", e.Exception);
+    }
+
+    private void LogCriticalException(string source, Exception exception)
+    {
+        var logger = _startupLogger;
+        if (logger is null)
+        {
+            return;
+        }
+
+        var workspaceInfo = ResolveWorkspaceInfo();
+        logger.LogCritical(exception,
+            "{Source} captured unhandled exception. ExceptionType={ExceptionType}; AppVersion={AppVersion}; WorkspaceId={WorkspaceId}; WorkspaceName={WorkspaceName}; Message={Message}; Stack={StackTrace}",
+            source,
+            exception.GetType().FullName,
+            typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown",
+            workspaceInfo.id,
+            workspaceInfo.name,
+            exception.Message,
+            exception.StackTrace ?? string.Empty);
+    }
+
+    private (string id, string name) ResolveWorkspaceInfo()
+    {
+        try
+        {
+            var workspaceService = _serviceProvider?.GetService<IWorkspaceService>();
+            var workspace = workspaceService?.GetCurrentAsync().GetAwaiter().GetResult();
+            return workspace is null
+                ? ("unknown", "unknown")
+                : (workspace.Id, workspace.Name);
+        }
+        catch
+        {
+            return ("unknown", "unknown");
+        }
     }
 }
