@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dapper;
@@ -12,6 +13,9 @@ public sealed class SqliteAgentService(
     IAppSettingsService appSettingsService,
     ILLMProviderFactory llmProviderFactory) : IAgentService
 {
+    private static readonly Regex SnippetCitationRegex = new(@"\[SNIP:(?<id>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex DocumentCitationRegex = new(@"\[DOC:(?<documentId>[^\]|]+)\|chunk:(?<chunkIndex>\d+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public async Task<IReadOnlyList<AgentTemplateRecord>> GetAgentsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -148,8 +152,9 @@ public sealed class SqliteAgentService(
                WHERE id = @Id",
             new { Id = request.AgentId }, cancellationToken: cancellationToken));
 
-        var selectedChunks = await SelectRelevantChunksAsync(connection, request, generationSettings.TopDocumentChunks, cancellationToken);
-        var prompt = BuildPrompt(agent, request.Query ?? string.Empty, selectedChunks);
+        var selectedChunks = await RetrieveRelevantChunksAsync(connection, request, generationSettings.TopDocumentChunks, cancellationToken);
+        var promptBuildResult = BuildPrompt(agent, request.Query ?? string.Empty, selectedChunks);
+        var prompt = promptBuildResult.Prompt;
         var contextDocsText = string.Join("\n\n", selectedChunks.Select(c => $"[{c.DocumentTitle}#{c.ChunkIndex}] {c.Content}"));
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -181,7 +186,27 @@ public sealed class SqliteAgentService(
                 Id = Guid.NewGuid().ToString(),
                 RunId = runId,
                 ArgumentsJson = JsonSerializer.Serialize(new { query = request.Query, selectedDocuments = request.SelectedDocumentIds }),
-                OutputJson = JsonSerializer.Serialize(selectedChunks.Select(x => new { x.DocumentId, x.DocumentTextId, x.ChunkIndex, x.Score })),
+                OutputJson = JsonSerializer.Serialize(new
+                {
+                    count = selectedChunks.Count,
+                    documentIds = selectedChunks.Select(x => x.DocumentId).Distinct().ToArray(),
+                    chunkIds = selectedChunks.Select(x => x.DocumentTextId).ToArray(),
+                    chunks = selectedChunks.Select(x => new { x.DocumentId, x.DocumentTextId, x.ChunkIndex, x.Score })
+                }),
+                Now = now
+            },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO tool_call (id, agent_run_id, name, arguments_json, output_json, status, created_at)
+              VALUES (@Id, @RunId, 'prompt_build', @ArgumentsJson, @OutputJson, 'success', @Now)",
+            new
+            {
+                Id = Guid.NewGuid().ToString(),
+                RunId = runId,
+                ArgumentsJson = JsonSerializer.Serialize(new { query = request.Query, selectedChunkCount = selectedChunks.Count }),
+                OutputJson = JsonSerializer.Serialize(new { promptLength = prompt.Length, citationLabels = promptBuildResult.CitationLabels }),
                 Now = now
             },
             transaction,
@@ -205,8 +230,31 @@ public sealed class SqliteAgentService(
 
         await connection.ExecuteAsync(new CommandDefinition(
             @"INSERT INTO artifact (id, workspace_id, agent_run_id, artifact_type, title, content, content_format, created_at, updated_at)
-              VALUES (@Id, @WorkspaceId, @RunId, 'agent_output', @Title, @Content, 'text', @Now, @Now)",
-            new { Id = artifactId, WorkspaceId = workspaceId, RunId = runId, Title = "Run Output", Content = responseText, Now = now },
+              VALUES (@Id, @WorkspaceId, @RunId, 'summary', @Title, @Content, 'markdown', @Now, @Now)",
+            new { Id = artifactId, WorkspaceId = workspaceId, RunId = runId, Title = "Ask My Vault Answer", Content = responseText, Now = now },
+            transaction,
+            cancellationToken: cancellationToken));
+
+        var citationCount = await CreateCitationEvidenceLinksAsync(
+            connection,
+            transaction,
+            workspaceId,
+            artifactId,
+            responseText,
+            selectedChunks,
+            cancellationToken);
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO tool_call (id, agent_run_id, name, arguments_json, output_json, status, created_at)
+              VALUES (@Id, @RunId, 'citation_parse', @ArgumentsJson, @OutputJson, 'success', @Now)",
+            new
+            {
+                Id = Guid.NewGuid().ToString(),
+                RunId = runId,
+                ArgumentsJson = JsonSerializer.Serialize(new { artifactId }),
+                OutputJson = JsonSerializer.Serialize(new { citationCount }),
+                Now = now
+            },
             transaction,
             cancellationToken: cancellationToken));
 
@@ -238,6 +286,26 @@ public sealed class SqliteAgentService(
         return runId;
     }
 
+    public async Task<IReadOnlyList<AgentToolCallRecord>> GetToolCallsAsync(string runId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<AgentToolCallRecord>(new CommandDefinition(
+            @"SELECT id,
+                     agent_run_id AS RunId,
+                     name,
+                     COALESCE(arguments_json, '{}') AS ArgumentsJson,
+                     COALESCE(output_json, '{}') AS OutputJson,
+                     status,
+                     created_at AS CreatedAt
+                FROM tool_call
+               WHERE agent_run_id = @RunId
+            ORDER BY created_at",
+            new { RunId = runId }, cancellationToken: cancellationToken));
+
+        return rows.ToList();
     public async Task<AskMyVaultResult> ExecuteAskMyVaultAsync(AskMyVaultRequest request, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -390,7 +458,7 @@ public sealed class SqliteAgentService(
             new { Id = artifactId, Content = content, Now = DateTime.UtcNow.ToString("O") }, cancellationToken: cancellationToken));
     }
 
-    private static async Task<IReadOnlyList<DocumentChunkScore>> SelectRelevantChunksAsync(SqliteConnection connection, AgentRunRequest request, int takeCount, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DocumentChunkScore>> RetrieveRelevantChunksAsync(SqliteConnection connection, AgentRunRequest request, int takeCount, CancellationToken cancellationToken)
     {
         var ids = request.SelectedDocumentIds.Distinct().ToArray();
         if (ids.Length == 0)
@@ -481,9 +549,10 @@ public sealed class SqliteAgentService(
         }
     }
 
-    private static string BuildPrompt(AgentTemplateRecord agent, string query, IReadOnlyList<DocumentChunkScore> chunks)
+    private static PromptBuildResult BuildPrompt(AgentTemplateRecord agent, string query, IReadOnlyList<DocumentChunkScore> chunks)
     {
         var builder = new StringBuilder();
+        var citationLabels = new List<string>();
         builder.AppendLine($"Agent: {agent.Name}");
         if (!string.IsNullOrWhiteSpace(agent.Goal))
         {
@@ -497,8 +566,80 @@ public sealed class SqliteAgentService(
 
         builder.AppendLine();
         builder.AppendLine($"User query: {query}");
+        builder.AppendLine("Use citations like [SNIP:<id>] or [DOC:<document_id>|chunk:<i>] where possible.");
         builder.AppendLine($"Relevant chunks provided: {chunks.Count}");
-        return builder.ToString();
+
+        foreach (var chunk in chunks)
+        {
+            var label = $"DOC:{chunk.DocumentId}|chunk:{chunk.ChunkIndex}";
+            citationLabels.Add(label);
+            builder.AppendLine($"- [{label}] {chunk.DocumentTitle}");
+        }
+
+        return new PromptBuildResult(builder.ToString(), citationLabels);
+    }
+
+    private static async Task<int> CreateCitationEvidenceLinksAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string workspaceId,
+        string artifactId,
+        string responseText,
+        IReadOnlyList<DocumentChunkScore> selectedChunks,
+        CancellationToken cancellationToken)
+    {
+        var snippetIds = SnippetCitationRegex.Matches(responseText)
+            .Select(static m => m.Groups["id"].Value.Trim())
+            .Where(static id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var documentCitations = DocumentCitationRegex.Matches(responseText)
+            .Select(static m => new
+            {
+                DocumentId = m.Groups["documentId"].Value.Trim(),
+                ChunkIndex = int.TryParse(m.Groups["chunkIndex"].Value, out var chunkIndex) ? chunkIndex : -1
+            })
+            .Where(static x => !string.IsNullOrWhiteSpace(x.DocumentId) && x.ChunkIndex >= 0)
+            .Distinct()
+            .ToList();
+
+        foreach (var snippetId in snippetIds)
+        {
+            var relation = JsonSerializer.Serialize(new { kind = "snippet" });
+            await connection.ExecuteAsync(new CommandDefinition(
+                @"INSERT INTO evidence_link (id, workspace_id, from_entity_type, from_entity_id, to_entity_type, to_entity_id, relation, confidence, created_at)
+                  VALUES (@Id, @WorkspaceId, 'artifact', @ArtifactId, 'snippet', @SnippetId, @Relation, 1.0, @Now)",
+                new
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    WorkspaceId = workspaceId,
+                    ArtifactId = artifactId,
+                    SnippetId = snippetId,
+                    Relation = relation,
+                    Now = DateTime.UtcNow.ToString("O")
+                }, transaction, cancellationToken: cancellationToken));
+        }
+
+        foreach (var citation in documentCitations)
+        {
+            var matchedChunk = selectedChunks.FirstOrDefault(x => string.Equals(x.DocumentId, citation.DocumentId, StringComparison.OrdinalIgnoreCase) && x.ChunkIndex == citation.ChunkIndex);
+            var relation = JsonSerializer.Serialize(new { kind = "document_locator", locator = $"chunk:{citation.ChunkIndex}", quote = matchedChunk?.Content });
+            await connection.ExecuteAsync(new CommandDefinition(
+                @"INSERT INTO evidence_link (id, workspace_id, from_entity_type, from_entity_id, to_entity_type, to_entity_id, relation, confidence, created_at)
+                  VALUES (@Id, @WorkspaceId, 'artifact', @ArtifactId, 'document', @DocumentId, @Relation, 1.0, @Now)",
+                new
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    WorkspaceId = workspaceId,
+                    ArtifactId = artifactId,
+                    DocumentId = citation.DocumentId,
+                    Relation = relation,
+                    Now = DateTime.UtcNow.ToString("O")
+                }, transaction, cancellationToken: cancellationToken));
+        }
+
+        return snippetIds.Count + documentCitations.Count;
     }
 
     private static string BuildAskMyVaultPrompt(string query, IReadOnlyList<DocumentChunkScore> chunks)
@@ -653,4 +794,6 @@ public sealed class SqliteAgentService(
         public string DocumentTitle { get; init; } = string.Empty;
         public double Score { get; set; }
     }
+
+    private sealed record PromptBuildResult(string Prompt, IReadOnlyList<string> CitationLabels);
 }

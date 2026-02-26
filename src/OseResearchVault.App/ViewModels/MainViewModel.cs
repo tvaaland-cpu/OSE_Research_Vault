@@ -166,6 +166,7 @@ public sealed class MainViewModel : ViewModelBase
         OpenAskVaultContextItemCommand = new RelayCommand(() => OpenAskVaultContextItem(SelectedAskVaultContextItem), () => SelectedAskVaultContextItem is not null);
         SaveAgentTemplateCommand = new RelayCommand(() => _ = SaveAgentTemplateAsync(), () => !string.IsNullOrWhiteSpace(AgentName));
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
+        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
         SaveMetricCommand = new RelayCommand(() => _ = SaveMetricAsync(), () => SelectedHubCompany is not null && !string.IsNullOrWhiteSpace(MetricName) && !string.IsNullOrWhiteSpace(MetricPeriod));
@@ -673,8 +674,28 @@ public sealed class MainViewModel : ViewModelBase
         await LoadDocumentsAsync();
         await LoadNotesAsync();
         await LoadSearchFiltersAsync();
+        await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+    }
+
+    private async Task EnsureAskMyVaultAgentAsync()
+    {
+        var existing = (await _agentService.GetAgentsAsync()).FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            return;
+        }
+
+        await _agentService.CreateAgentAsync(new AgentTemplateUpsertRequest
+        {
+            Name = "AskMyVault",
+            Goal = "Answer questions from local vault evidence",
+            Instructions = "Use retrieved context and include citations like [DOC:<document_id>|chunk:<i>] and [SNIP:<id>] when available.",
+            AllowedToolsJson = "[\"local_search\",\"prompt_build\"]",
+            OutputSchema = "markdown",
+            EvidencePolicy = "citation_required_when_available"
+        });
     }
 
     private async Task SaveSelectedDocumentCompanyAsync()
@@ -1519,6 +1540,24 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RunAgentAsync()
     {
+        var askMyVault = SelectedAgentTemplate;
+        if (askMyVault is null || !string.Equals(askMyVault.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase))
+        {
+            askMyVault = AgentTemplates.FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+            if (askMyVault is null)
+            {
+                await EnsureAskMyVaultAgentAsync();
+                await LoadAgentsAsync();
+                askMyVault = AgentTemplates.FirstOrDefault(x => string.Equals(x.Name, "AskMyVault", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        if (askMyVault is null)
+        {
+            AgentStatusMessage = "Unable to find AskMyVault template.";
+            return;
+        }
+
         var selectedDocIds = RunSelectableDocuments
             .Where(d => d.IsSelected)
             .Select(d => d.Id)
@@ -1543,11 +1582,20 @@ public sealed class MainViewModel : ViewModelBase
 
         var askResult = await _agentService.ExecuteAskMyVaultAsync(new AskMyVaultRequest
         {
+            AgentId = askMyVault.Id,
             CompanyId = SelectedRunCompany?.Id,
             Query = AgentQuery,
             SelectedDocumentIds = selectedDocIds
         });
 
+        AgentStatusMessage = "Answer generated and run history captured.";
+        await LoadAgentRunsAsync();
+        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+        var toolCalls = await _agentService.GetToolCallsAsync(runId);
+        if (toolCalls.Any(x => x.Name == "citation_parse" && x.OutputJson.Contains("\"citationCount\":0", StringComparison.OrdinalIgnoreCase)))
+        {
+            AgentStatusMessage = "Answer generated and run history captured. No citations detected.";
+        }
         AgentStatusMessage = askResult.CitationsDetected
             ? "Answer generated and stored in run history."
             : "Answer generated and stored in run history. No citations detected.";
@@ -1572,6 +1620,8 @@ public sealed class MainViewModel : ViewModelBase
         RunInputSummary = $"Query: {run.Query}{Environment.NewLine}Selected docs: {(selectedDocIds.Count == 0 ? "(none)" : string.Join(", ", selectedDocIds))}";
         var toolCalls = await _agentService.GetToolCallsAsync(run.Id);
         RunToolCallsSummary = toolCalls.Count == 0
+            ? "No tool calls captured."
+            : string.Join(Environment.NewLine, toolCalls.Select(tc => $"{tc.Name} [{tc.Status}]"));
             ? "No tool calls recorded."
             : string.Join(Environment.NewLine, toolCalls.Select(x => $"{x.Name} ({x.Status})"));
 
