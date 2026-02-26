@@ -953,6 +953,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 Id = run.Id,
                 AgentName = run.AgentName,
+                CompanyId = run.CompanyId ?? string.Empty,
                 CompanyName = run.CompanyName ?? string.Empty,
                 Query = run.Query,
                 Status = run.Status,
@@ -1078,6 +1079,68 @@ public sealed class MainViewModel : ViewModelBase
 
         await _agentService.UpdateArtifactContentAsync(SelectedRunArtifact.Id, SelectedRunArtifact.Content);
         AgentStatusMessage = "Artifact output saved.";
+    }
+
+    public IReadOnlyList<DocumentListItemViewModel> GetSuggestedDocumentsForSelectedArtifact()
+    {
+        var selectedRunCompanyId = SelectedAgentRun?.CompanyId;
+        if (!string.IsNullOrWhiteSpace(selectedRunCompanyId))
+        {
+            var sameCompany = Documents
+                .Where(d => string.Equals(d.CompanyId, selectedRunCompanyId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (sameCompany.Count > 0)
+            {
+                return sameCompany;
+            }
+        }
+
+        return Documents.ToList();
+    }
+
+    public Task<DocumentRecord?> GetDocumentDetailsForEvidenceAsync(string documentId)
+        => _documentImportService.GetDocumentDetailsAsync(documentId);
+
+    public async Task CreateSnippetAndLinkToArtifactAsync(string artifactId, string documentId, string locator, string snippetText, string? companyId)
+    {
+        if (string.IsNullOrWhiteSpace(artifactId))
+        {
+            AgentStatusMessage = "Select an artifact before linking evidence.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            AgentStatusMessage = "Select a document to create evidence.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(locator) || string.IsNullOrWhiteSpace(snippetText))
+        {
+            AgentStatusMessage = "Select text and provide a locator before saving evidence.";
+            return;
+        }
+
+        var detail = await _documentImportService.GetDocumentDetailsAsync(documentId);
+        if (detail is null || string.IsNullOrWhiteSpace(detail.WorkspaceId))
+        {
+            AgentStatusMessage = "Unable to load document details for evidence creation.";
+            return;
+        }
+
+        await _evidenceService.AddSnippetAndLinkToArtifactAsync(
+            detail.WorkspaceId,
+            artifactId,
+            documentId,
+            string.IsNullOrWhiteSpace(companyId) ? null : companyId,
+            sourceId: null,
+            locator,
+            snippetText,
+            createdBy: "user",
+            relevanceScore: null);
+
+        AgentStatusMessage = "Snippet created and linked to artifact.";
     }
 
     private void OpenSearchResult(SearchResultListItemViewModel? result)

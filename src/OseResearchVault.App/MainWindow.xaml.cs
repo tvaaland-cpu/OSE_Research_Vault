@@ -103,4 +103,46 @@ public partial class MainWindow : Window
         await _viewModel.CreateSnippetForSelectedDocumentAsync(dialog.Locator, dialog.SnippetTextValue, dialog.CompanyId);
     }
 
+
+    private async void CreateSnippetAndLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedRunArtifact is null)
+        {
+            return;
+        }
+
+        var suggestedDocuments = _viewModel.GetSuggestedDocumentsForSelectedArtifact();
+        if (suggestedDocuments.Count == 0)
+        {
+            MessageBox.Show(this, "No documents are available to create evidence.", "Create Snippet & Link", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var documentChoices = suggestedDocuments
+            .Select(d => new CreateSnippetAndLinkDialog.DocumentChoice
+            {
+                Id = d.Id,
+                DisplayName = string.IsNullOrWhiteSpace(d.Company) ? d.Title : $"{d.Title} ({d.Company})",
+                CompanyId = string.IsNullOrWhiteSpace(d.CompanyId) ? null : d.CompanyId
+            })
+            .ToList();
+
+        var dialog = new CreateSnippetAndLinkDialog(documentChoices, _viewModel.GetDocumentDetailsForEvidenceAsync)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await _viewModel.CreateSnippetAndLinkToArtifactAsync(
+            _viewModel.SelectedRunArtifact.Id,
+            dialog.SelectedDocumentId,
+            dialog.Locator,
+            dialog.Snippet,
+            dialog.SelectedCompanyId);
+    }
+
 }
