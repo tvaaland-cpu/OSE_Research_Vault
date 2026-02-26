@@ -746,5 +746,27 @@
         <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,20,20,0" Padding="12,8" CornerRadius="8" Background="#FF1A202C" Visibility="{Binding IsToastVisible, Converter={StaticResource BoolToVisibility}}">
             <TextBlock Text="{Binding ToastMessage}" Foreground="White" MaxWidth="360" TextWrapping="Wrap"/>
         </Border>
-    </Grid>
+    
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsConnectorsSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Connectors" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="Run connectors to snapshot external sources into Documents." Foreground="#FF4A5568" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+                <DataGrid Grid.Column="0" ItemsSource="{Binding Connectors}" SelectedItem="{Binding SelectedConnector}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Connector" Binding="{Binding DisplayName}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="URL" FontWeight="SemiBold"/>
+                    <TextBox Margin="0,4,0,8" Text="{Binding ConnectorUrl, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="Run" Width="120" Command="{Binding RunConnectorCommand}"/>
+                    <TextBlock Margin="0,12,0,0" Text="{Binding ConnectorRunResult}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+</Grid>
 </Window>

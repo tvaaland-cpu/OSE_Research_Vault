@@ -78,6 +78,14 @@ public partial class App : Application
         services.AddSingleton<IImportInboxWatcher, FileSystemImportInboxWatcher>();
         services.AddSingleton<INotificationService, SqliteNotificationService>();
         services.AddSingleton<IAutomationService, SqliteAutomationService>();
+        services.AddHttpClient<IConnectorHttpClient, ConnectorHttpClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(20);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("OSE-Research-Vault/1.0");
+        });
+        services.AddSingleton<ISnapshotService, SnapshotService>();
+        services.AddSingleton<IConnector, DummyUrlSnapshotConnector>();
+        services.AddSingleton<IConnectorRegistry, ConnectorRegistry>();
         services.AddSingleton<IMetricService, SqliteMetricService>();
         services.AddSingleton<IExportService, SqliteExportService>();
         services.AddSingleton<IBackupService, SqliteBackupService>();

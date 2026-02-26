@@ -26,6 +26,8 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IMetricService _metricService;
     private readonly IMetricConflictDialogService _metricConflictDialogService;
     private readonly IUserDialogService _dialogService;
+    private readonly IConnectorRegistry _connectorRegistry;
+    private readonly IConnectorHttpClient _connectorHttpClient;
     private readonly IMetricService _metricService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
@@ -127,6 +129,9 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricEditValue = string.Empty;
     private string _metricEditUnit = string.Empty;
     private string _metricEditCurrency = string.Empty;
+    private ConnectorListItemViewModel? _selectedConnector;
+    private string _connectorUrl = "https://example.com";
+    private string _connectorRunResult = "Run a connector to ingest snapshots.";
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IUserDialogService dialogService)
 
@@ -164,7 +169,8 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Search"),
             new NavigationItem("Data Quality"),
             new NavigationItem("Inbox"),
-            new NavigationItem("Settings")
+            new NavigationItem("Settings"),
+            new NavigationItem("Connectors")
         ];
 
         Documents = [];
@@ -195,6 +201,7 @@ public sealed class MainViewModel : ViewModelBase
         ArtifactEvidenceLinks = [];
         DocumentSnippets = [];
         Notifications = [];
+        Connectors = [];
         Automations = [];
         AutomationRuns = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
@@ -245,6 +252,7 @@ public sealed class MainViewModel : ViewModelBase
         OpenMetricEvidenceCommand = new RelayCommand(param => _ = OpenMetricEvidenceAsync(param as CompanyMetricListItemViewModel));
         SaveMetricCommand = new RelayCommand(() => _ = SaveSelectedMetricAsync(), () => SelectedHubMetric is not null && !string.IsNullOrWhiteSpace(MetricEditName));
         DeleteMetricCommand = new RelayCommand(() => _ = DeleteSelectedMetricAsync(), () => SelectedHubMetric is not null);
+        RunConnectorCommand = new RelayCommand(() => _ = RunSelectedConnectorAsync(), () => SelectedConnector is not null);
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -284,6 +292,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<DataQualityMetricIssueViewModel> DataQualityMetricIssues { get; }
     public ObservableCollection<DataQualitySnippetIssueViewModel> DataQualitySnippetIssues { get; }
     public ObservableCollection<NotificationListItemViewModel> Notifications { get; }
+    public ObservableCollection<ConnectorListItemViewModel> Connectors { get; }
     public ObservableCollection<AutomationListItemViewModel> Automations { get; }
     public ObservableCollection<AutomationRunListItemViewModel> AutomationRuns { get; }
     public IReadOnlyList<string> NoteTypes { get; }
@@ -326,6 +335,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand OpenMetricEvidenceCommand { get; }
     public RelayCommand SaveMetricCommand { get; }
     public RelayCommand DeleteMetricCommand { get; }
+    public RelayCommand RunConnectorCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -346,6 +356,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsInboxSelected));
                 OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsAskMyVaultSelected));
+                OnPropertyChanged(nameof(IsConnectorsSelected));
             }
         }
     }
@@ -397,6 +408,31 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _automationStatusMessage, value);
     }
     public bool IsAskMyVaultSelected => IsSelected("Ask My Vault");
+    public bool IsConnectorsSelected => IsSelected("Connectors");
+
+    public ConnectorListItemViewModel? SelectedConnector
+    {
+        get => _selectedConnector;
+        set
+        {
+            if (SetProperty(ref _selectedConnector, value))
+            {
+                RunConnectorCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ConnectorUrl
+    {
+        get => _connectorUrl;
+        set => SetProperty(ref _connectorUrl, value);
+    }
+
+    public string ConnectorRunResult
+    {
+        get => _connectorRunResult;
+        set => SetProperty(ref _connectorRunResult, value);
+    }
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -950,6 +986,7 @@ public sealed class MainViewModel : ViewModelBase
 
             await LoadDocumentsAsync();
         await LoadNotificationsAsync();
+        LoadConnectors();
         await LoadAutomationsAsync();
     }
 
@@ -2497,4 +2534,47 @@ public sealed class MainViewModel : ViewModelBase
         var trimmed = text.Trim();
         return trimmed.Length <= 200 ? trimmed : $"{trimmed[..200]}…";
     }
+    private void LoadConnectors()
+    {
+        Connectors.Clear();
+        foreach (var connector in _connectorRegistry.GetConnectors())
+        {
+            Connectors.Add(new ConnectorListItemViewModel { Id = connector.Id, DisplayName = connector.DisplayName });
+        }
+
+        SelectedConnector = Connectors.FirstOrDefault();
+    }
+
+    private async Task RunSelectedConnectorAsync()
+    {
+        if (SelectedConnector is null)
+        {
+            return;
+        }
+
+        var settings = await _appSettingsService.GetSettingsAsync();
+        var workspaceId = SelectedSearchWorkspace?.Id ?? WorkspaceOptions.FirstOrDefault()?.Id ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            ConnectorRunResult = "No workspace selected.";
+            return;
+        }
+
+        var context = new ConnectorContext
+        {
+            WorkspaceId = workspaceId,
+            CompanyId = null,
+            HttpClient = _connectorHttpClient,
+            Settings = new Dictionary<string, string> { ["url"] = ConnectorUrl },
+            Logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance
+        };
+
+        var result = await _connectorRegistry.RunAsync(SelectedConnector.Id, context);
+        ConnectorRunResult = $"Sources +{result.SourcesCreated}, Documents +{result.DocumentsCreated}, Errors: {result.Errors.Count}";
+
+        await _notificationService.AddNotification(result.Errors.Count == 0 ? "info" : "warn", "Connector run finished", ConnectorRunResult);
+        await LoadDocumentsAsync();
+        await LoadNotificationsAsync();
+    }
+
 }
