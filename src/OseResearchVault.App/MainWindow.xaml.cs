@@ -332,7 +332,7 @@ public partial class MainWindow : Window
         }
 
         var targetFolder = Path.Combine(dialog.SelectedPath, $"research-pack-{_viewModel.SelectedHubCompany.DisplayName}-{DateTime.UtcNow:yyyyMMddHHmmss}");
-        await _exportService.ExportCompanyResearchPackAsync(string.Empty, _viewModel.SelectedHubCompany.Id, targetFolder);
+        await _exportService.ExportCompanyResearchPackAsync(string.Empty, _viewModel.SelectedHubCompany.Id, targetFolder, ReadRedactionOptionsFromForm());
         await _notificationService.AddNotification("info", "Research pack exported", $"Research pack saved to: {targetFolder}");
         MessageBox.Show(this, $"Research pack exported to:
 {targetFolder}", "Export complete", MessageBoxButton.OK, MessageBoxImage.Information);

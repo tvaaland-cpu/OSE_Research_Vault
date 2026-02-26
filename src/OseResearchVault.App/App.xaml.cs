@@ -93,6 +93,7 @@ public partial class App : Application
         services.AddSingleton<IMetricService, SqliteMetricService>();
         services.AddSingleton<ITradeService, SqliteTradeService>();
         services.AddSingleton<IPositionAnalyticsService, PositionAnalyticsService>();
+        services.AddSingleton<IRedactionService, RegexRedactionService>();
         services.AddSingleton<IExportService, SqliteExportService>();
         services.AddSingleton<IBackupService, SqliteBackupService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();

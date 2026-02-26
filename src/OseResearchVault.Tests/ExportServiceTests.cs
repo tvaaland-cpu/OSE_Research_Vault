@@ -43,7 +43,7 @@ public sealed class ExportServiceTests
                     new { Id = "met-1", WorkspaceId = workspaceId, CompanyId = "comp-1", Key = "Revenue", Value = 100.5, Unit = "USDm", Start = "2025-01-01", End = "2025-03-31", Now = now, SnippetId = "snip-1" });
             }
 
-            var service = new SqliteExportService(settingsService);
+            var service = new SqliteExportService(settingsService, new RegexRedactionService());
             var outputFolder = Path.Combine(tempRoot, "out");
             await service.ExportCompanyResearchPackAsync(string.Empty, "comp-1", outputFolder);
 

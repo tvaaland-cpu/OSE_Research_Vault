@@ -9,7 +9,8 @@
         Width="1280"
         Height="800"
         MinWidth="980"
-        MinHeight="620">
+        MinHeight="620"
+        Loaded="MainWindow_OnLoaded">
     <Grid>
         <Grid.Resources>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
@@ -864,6 +865,25 @@
                         <TextBlock Text="Folder path" Margin="0,0,0,4"/>
                         <TextBox Text="{Binding ImportInboxFolderPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
                         <Button Content="Save Inbox Settings" Width="160" Command="{Binding SaveImportInboxSettingsCommand}"/>
+                    </StackPanel>
+                </GroupBox>
+                <GroupBox Header="Export Profiles" Padding="12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <ListBox x:Name="ExportProfilesListBox" Height="120" DisplayMemberPath="Name" SelectionChanged="ExportProfilesListBox_OnSelectionChanged"/>
+                        <TextBlock Text="Profile name" Margin="0,8,0,4"/>
+                        <TextBox x:Name="ExportProfileNameTextBox"/>
+                        <WrapPanel Margin="0,8,0,0">
+                            <CheckBox x:Name="MaskEmailsCheckBox" Content="Mask emails" IsChecked="True" Margin="0,0,10,0"/>
+                            <CheckBox x:Name="MaskPhonesCheckBox" Content="Mask phones" IsChecked="True" Margin="0,0,10,0"/>
+                            <CheckBox x:Name="MaskPathsCheckBox" Content="Mask paths" IsChecked="True" Margin="0,0,10,0"/>
+                            <CheckBox x:Name="MaskSecretsCheckBox" Content="Mask secrets" IsChecked="True" Margin="0,0,10,0"/>
+                            <CheckBox x:Name="ExcludePrivateCheckBox" Content="Exclude private tagged items" IsChecked="True"/>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Content="Save profile" Width="120" Click="SaveExportProfile_OnClick"/>
+                            <Button Content="Delete profile" Width="120" Margin="8,0,0,0" Click="DeleteExportProfile_OnClick"/>
+                            <Button Content="Preview redaction" Width="140" Margin="8,0,0,0" Click="PreviewRedaction_OnClick"/>
+                        </WrapPanel>
                     </StackPanel>
                 </GroupBox>
                 <GroupBox Header="Workspace" Padding="12" Margin="0,12,0,0">

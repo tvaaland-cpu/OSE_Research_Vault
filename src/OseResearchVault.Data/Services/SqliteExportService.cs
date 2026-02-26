@@ -1,18 +1,21 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
+using OseResearchVault.Core.Models;
 
 namespace OseResearchVault.Data.Services;
 
-public sealed class SqliteExportService(IAppSettingsService appSettingsService) : IExportService
+public sealed class SqliteExportService(IAppSettingsService appSettingsService, IRedactionService redactionService) : IExportService
 {
-    public async Task ExportCompanyResearchPackAsync(string workspaceId, string companyId, string outputFolder, CancellationToken cancellationToken = default)
+    public async Task ExportCompanyResearchPackAsync(string workspaceId, string companyId, string outputFolder, RedactionOptions? redactionOptions = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(companyId);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputFolder);
 
+        redactionOptions ??= new RedactionOptions();
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
         Directory.CreateDirectory(outputFolder);
         var artifactsDir = Path.Combine(outputFolder, "artifacts");
@@ -24,26 +27,28 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService) 
         await connection.OpenAsync(cancellationToken);
 
         var company = await connection.QuerySingleOrDefaultAsync<CompanyRow>(new CommandDefinition(
-            @"SELECT id, name, ticker, isin
-                FROM company
-               WHERE id = @CompanyId", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+            @"SELECT id, name, ticker, isin FROM company WHERE id = @CompanyId", new { CompanyId = companyId }, cancellationToken: cancellationToken));
         if (company is null)
         {
             throw new InvalidOperationException("Company not found.");
         }
 
-        var positionSummary = await connection.QueryFirstOrDefaultAsync<string>(new CommandDefinition(
-            @"SELECT COALESCE(label, '') || CASE WHEN COALESCE(thesis, '') = '' THEN '' ELSE ': ' || thesis END
-                FROM position
-               WHERE company_id = @CompanyId
-            ORDER BY updated_at DESC
-               LIMIT 1", new { CompanyId = companyId }, cancellationToken: cancellationToken));
-
-        var notes = await connection.QueryAsync<NoteRow>(new CommandDefinition(
-            @"SELECT title, note_type AS NoteType, content, updated_at AS UpdatedAt
-                FROM note
-               WHERE company_id = @CompanyId
-            ORDER BY note_type, updated_at DESC", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+        var notesSql = redactionOptions.ExcludePrivateTaggedItems
+            ? @"SELECT n.id, n.title, n.note_type AS NoteType, n.content, n.updated_at AS UpdatedAt
+                  FROM note n
+                 WHERE n.company_id = @CompanyId
+                   AND NOT EXISTS (
+                        SELECT 1
+                          FROM note_tag nt
+                          INNER JOIN tag t ON t.id = nt.tag_id
+                         WHERE nt.note_id = n.id
+                           AND LOWER(t.name) = 'private')
+              ORDER BY n.note_type, n.updated_at DESC"
+            : @"SELECT id, title, note_type AS NoteType, content, updated_at AS UpdatedAt
+                  FROM note
+                 WHERE company_id = @CompanyId
+              ORDER BY note_type, updated_at DESC";
+        var notes = await connection.QueryAsync<NoteRow>(new CommandDefinition(notesSql, new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         var metrics = await connection.QueryAsync<MetricRow>(new CommandDefinition(
             @"SELECT m.metric_key AS MetricName,
@@ -74,11 +79,19 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService) 
                WHERE e.company_id = @CompanyId
             ORDER BY e.occurred_at", new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
-        var artifacts = await connection.QueryAsync<ArtifactRow>(new CommandDefinition(
-            @"SELECT id, title, content
-                FROM artifact
-               WHERE company_id = @CompanyId
-            ORDER BY created_at", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+        var artifactsSql = redactionOptions.ExcludePrivateTaggedItems
+            ? @"SELECT a.id, a.title, a.content
+                  FROM artifact a
+                 WHERE a.company_id = @CompanyId
+                   AND NOT EXISTS (
+                        SELECT 1
+                          FROM artifact_tag at
+                          INNER JOIN tag t ON t.id = at.tag_id
+                         WHERE at.artifact_id = a.id
+                           AND LOWER(t.name) = 'private')
+              ORDER BY a.created_at"
+            : @"SELECT id, title, content FROM artifact WHERE company_id = @CompanyId ORDER BY created_at";
+        var artifacts = await connection.QueryAsync<ArtifactRow>(new CommandDefinition(artifactsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         var hasArchivedFlag = await HasColumnAsync(connection, "document", "is_archived", cancellationToken);
         var documentsSql = hasArchivedFlag
@@ -91,81 +104,99 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService) 
                  WHERE company_id = @CompanyId";
         var documents = (await connection.QueryAsync<DocumentRow>(new CommandDefinition(documentsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken))).ToList();
 
-        await File.WriteAllTextAsync(Path.Combine(outputFolder, "index.md"), BuildIndex(company, positionSummary, DateTimeOffset.UtcNow, workspaceId), cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(outputFolder, "notes.md"), BuildNotes(notes), cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(outputFolder, "metrics.csv"), BuildMetricsCsv(metrics), cancellationToken);
-        await File.WriteAllTextAsync(Path.Combine(outputFolder, "events.csv"), BuildEventsCsv(events), cancellationToken);
+        var index = Redact(BuildIndex(company, DateTimeOffset.UtcNow, workspaceId), redactionOptions);
+        var notesText = Redact(BuildNotes(notes), redactionOptions);
+        var metricsText = Redact(BuildMetricsCsv(metrics), redactionOptions);
+        var eventsText = Redact(BuildEventsCsv(events), redactionOptions);
+
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "index.md"), index, cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "notes.md"), notesText, cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "metrics.csv"), metricsText, cancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(outputFolder, "events.csv"), eventsText, cancellationToken);
 
         foreach (var artifact in artifacts)
         {
-            var evidence = await connection.QueryAsync<ArtifactEvidenceRow>(new CommandDefinition(
-                @"SELECT COALESCE(s.quote_text, el.quote, '') AS Excerpt,
-                         COALESCE(s.context, el.locator, '') AS Locator,
-                         COALESCE(d.title, '') AS DocumentTitle
-                    FROM evidence_link el
-                    LEFT JOIN snippet s ON s.id = el.to_entity_id AND el.to_entity_type = 'snippet'
-                    LEFT JOIN document d ON d.id = s.document_id
-                   WHERE el.from_entity_type = 'artifact'
-                     AND el.from_entity_id = @ArtifactId
-                ORDER BY el.created_at", new { ArtifactId = artifact.Id }, cancellationToken: cancellationToken));
-
-            var artifactFile = Path.Combine(artifactsDir, $"{SanitizeFileName(string.IsNullOrWhiteSpace(artifact.Title) ? artifact.Id : artifact.Title)}.md");
-            await File.WriteAllTextAsync(artifactFile, BuildArtifactMarkdown(artifact, evidence), cancellationToken);
+            var artifactText = Redact(BuildArtifactMarkdown(artifact), redactionOptions);
+            var artifactFileName = SanitizeFileName(artifact.Title);
+            await File.WriteAllTextAsync(Path.Combine(artifactsDir, $"{artifactFileName}.md"), artifactText, cancellationToken);
         }
 
-        var copiedByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var document in documents)
         {
-            if (string.IsNullOrWhiteSpace(document.FilePath) || !File.Exists(document.FilePath))
+            var targetName = $"{SanitizeFileName(document.Title)}_{document.Id[..Math.Min(8, document.Id.Length)]}{Path.GetExtension(document.FilePath)}";
+            var targetPath = Path.Combine(documentsDir, targetName);
+            if (File.Exists(document.FilePath))
             {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(document.ContentHash) && copiedByHash.TryGetValue(document.ContentHash, out var existingPath))
-            {
-                var duplicateTarget = Path.Combine(documentsDir, Path.GetFileName(existingPath));
-                if (!File.Exists(duplicateTarget))
-                {
-                    File.Copy(existingPath, duplicateTarget, overwrite: false);
-                }
-                continue;
-            }
-
-            var fileName = Path.GetFileName(document.FilePath);
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                fileName = $"{SanitizeFileName(document.Title)}.bin";
-            }
-
-            var targetPath = Path.Combine(documentsDir, fileName);
-            if (File.Exists(targetPath))
-            {
-                targetPath = Path.Combine(documentsDir, $"{Path.GetFileNameWithoutExtension(fileName)}_{document.Id[..8]}{Path.GetExtension(fileName)}");
-            }
-
-            File.Copy(document.FilePath, targetPath, overwrite: false);
-            if (!string.IsNullOrWhiteSpace(document.ContentHash))
-            {
-                copiedByHash[document.ContentHash] = targetPath;
+                File.Copy(document.FilePath, targetPath, overwrite: true);
             }
         }
     }
 
-    private static string BuildIndex(CompanyRow company, string? positionSummary, DateTimeOffset generatedAt, string workspaceId)
+    public async Task<IReadOnlyList<ExportProfileRecord>> GetExportProfilesAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = new SqliteConnection($"Data Source={settings.DatabaseFilePath}");
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<ExportProfileRow>(new CommandDefinition(
+            @"SELECT profile_id AS ProfileId, workspace_id AS WorkspaceId, name, options_json AS OptionsJson, created_at AS CreatedAt
+                FROM export_profile
+               WHERE workspace_id = @WorkspaceId
+            ORDER BY created_at DESC", new { WorkspaceId = workspaceId }, cancellationToken: cancellationToken));
+
+        return rows.Select(r => new ExportProfileRecord
+        {
+            ProfileId = r.ProfileId,
+            WorkspaceId = r.WorkspaceId,
+            Name = r.Name,
+            CreatedAt = r.CreatedAt,
+            Options = JsonSerializer.Deserialize<RedactionOptions>(r.OptionsJson) ?? new RedactionOptions()
+        }).ToList();
+    }
+
+    public async Task<string> SaveExportProfileAsync(string workspaceId, ExportProfileUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Name);
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = new SqliteConnection($"Data Source={settings.DatabaseFilePath}");
+        await connection.OpenAsync(cancellationToken);
+
+        var profileId = string.IsNullOrWhiteSpace(request.ProfileId) ? Guid.NewGuid().ToString() : request.ProfileId;
+        var now = DateTime.UtcNow.ToString("O");
+        var optionsJson = JsonSerializer.Serialize(request.Options ?? new RedactionOptions());
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO export_profile (profile_id, workspace_id, name, options_json, created_at)
+              VALUES (@ProfileId, @WorkspaceId, @Name, @OptionsJson, @CreatedAt)
+              ON CONFLICT(profile_id) DO UPDATE SET
+                  name = excluded.name,
+                  options_json = excluded.options_json",
+            new { ProfileId = profileId, WorkspaceId = workspaceId, request.Name, OptionsJson = optionsJson, CreatedAt = now }, cancellationToken: cancellationToken));
+
+        return profileId;
+    }
+
+    public async Task DeleteExportProfileAsync(string profileId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = new SqliteConnection($"Data Source={settings.DatabaseFilePath}");
+        await connection.OpenAsync(cancellationToken);
+
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM export_profile WHERE profile_id = @ProfileId", new { ProfileId = profileId }, cancellationToken: cancellationToken));
+    }
+
+    private string Redact(string text, RedactionOptions options) => redactionService.Redact(text, options).RedactedText;
+
+    private static string BuildIndex(CompanyRow company, DateTimeOffset generatedAt, string workspaceId)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"# Research Pack - {company.Name}");
+        sb.AppendLine("# Company Research Pack");
         sb.AppendLine();
-        sb.AppendLine($"- Workspace: {(string.IsNullOrWhiteSpace(workspaceId) ? "(default)" : workspaceId)}");
         sb.AppendLine($"- Company: {company.Name}");
         sb.AppendLine($"- Ticker: {company.Ticker}");
         sb.AppendLine($"- ISIN: {company.Isin}");
-        if (!string.IsNullOrWhiteSpace(positionSummary))
-        {
-            sb.AppendLine($"- Position summary: {positionSummary}");
-        }
-
-        sb.AppendLine($"- Generated at: {generatedAt:O}");
+        sb.AppendLine($"- Workspace: {workspaceId}");
+        sb.AppendLine($"- Generated At (UTC): {generatedAt:O}");
         sb.AppendLine();
         sb.AppendLine("## Files");
         sb.AppendLine("- [notes.md](notes.md)");
@@ -204,15 +235,7 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService) 
         rows.AppendLine("metric_name,period,value,unit,currency,evidence_document_title,evidence_locator,snippet_id");
         foreach (var metric in metrics)
         {
-            rows.AppendLine(string.Join(',',
-                Csv(metric.MetricName),
-                Csv(metric.Period),
-                Csv(metric.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
-                Csv(metric.Unit),
-                Csv(metric.Currency),
-                Csv(metric.EvidenceDocumentTitle),
-                Csv(metric.EvidenceLocator),
-                Csv(metric.SnippetId)));
+            rows.AppendLine(string.Join(',', Csv(metric.MetricName), Csv(metric.Period), Csv(metric.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty), Csv(metric.Unit), Csv(metric.Currency), Csv(metric.EvidenceDocumentTitle), Csv(metric.EvidenceLocator), Csv(metric.SnippetId)));
         }
 
         return rows.ToString();
@@ -224,31 +247,18 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService) 
         rows.AppendLine("event_date,event_type,confidence,description,evidence_document_title,evidence_locator");
         foreach (var item in events)
         {
-            rows.AppendLine(string.Join(',',
-                Csv(item.EventDate),
-                Csv(item.EventType),
-                Csv(item.Confidence),
-                Csv(item.Description),
-                Csv(item.EvidenceDocumentTitle),
-                Csv(item.EvidenceLocator)));
+            rows.AppendLine(string.Join(',', Csv(item.EventDate), Csv(item.EventType), Csv(item.Confidence), Csv(item.Description), Csv(item.EvidenceDocumentTitle), Csv(item.EvidenceLocator)));
         }
 
         return rows.ToString();
     }
 
-    private static string BuildArtifactMarkdown(ArtifactRow artifact, IEnumerable<ArtifactEvidenceRow> evidence)
+    private static string BuildArtifactMarkdown(ArtifactRow artifact)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# {artifact.Title}");
         sb.AppendLine();
         sb.AppendLine(artifact.Content);
-        sb.AppendLine();
-        sb.AppendLine("## Evidence");
-        foreach (var item in evidence)
-        {
-            sb.AppendLine($"- {item.Excerpt} (Locator: {item.Locator}; Document: {item.DocumentTitle})");
-        }
-
         return sb.ToString();
     }
 
@@ -271,68 +281,20 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService) 
         return columns.Any(c => string.Equals(c.Name, columnName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private sealed class TableInfoRow
+    private sealed class ExportProfileRow
     {
+        public string ProfileId { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
+        public string OptionsJson { get; init; } = string.Empty;
+        public string CreatedAt { get; init; } = string.Empty;
     }
 
-    private sealed class CompanyRow
-    {
-        public string Id { get; init; } = string.Empty;
-        public string Name { get; init; } = string.Empty;
-        public string? Ticker { get; init; }
-        public string? Isin { get; init; }
-    }
-
-    private sealed class NoteRow
-    {
-        public string Title { get; init; } = string.Empty;
-        public string? NoteType { get; init; }
-        public string Content { get; init; } = string.Empty;
-        public string UpdatedAt { get; init; } = string.Empty;
-    }
-
-    private sealed class MetricRow
-    {
-        public string MetricName { get; init; } = string.Empty;
-        public string? Period { get; init; }
-        public double? Value { get; init; }
-        public string? Unit { get; init; }
-        public string? Currency { get; init; }
-        public string? EvidenceDocumentTitle { get; init; }
-        public string? EvidenceLocator { get; init; }
-        public string? SnippetId { get; init; }
-    }
-
-    private sealed class EventRow
-    {
-        public string EventDate { get; init; } = string.Empty;
-        public string EventType { get; init; } = string.Empty;
-        public string? Confidence { get; init; }
-        public string Description { get; init; } = string.Empty;
-        public string? EvidenceDocumentTitle { get; init; }
-        public string? EvidenceLocator { get; init; }
-    }
-
-    private sealed class ArtifactRow
-    {
-        public string Id { get; init; } = string.Empty;
-        public string Title { get; init; } = string.Empty;
-        public string Content { get; init; } = string.Empty;
-    }
-
-    private sealed class ArtifactEvidenceRow
-    {
-        public string Excerpt { get; init; } = string.Empty;
-        public string Locator { get; init; } = string.Empty;
-        public string DocumentTitle { get; init; } = string.Empty;
-    }
-
-    private sealed class DocumentRow
-    {
-        public string Id { get; init; } = string.Empty;
-        public string Title { get; init; } = string.Empty;
-        public string FilePath { get; init; } = string.Empty;
-        public string ContentHash { get; init; } = string.Empty;
-    }
+    private sealed class TableInfoRow { public string Name { get; init; } = string.Empty; }
+    private sealed class CompanyRow { public string Id { get; init; } = string.Empty; public string Name { get; init; } = string.Empty; public string? Ticker { get; init; } public string? Isin { get; init; } }
+    private sealed class NoteRow { public string Id { get; init; } = string.Empty; public string Title { get; init; } = string.Empty; public string? NoteType { get; init; } public string Content { get; init; } = string.Empty; public string UpdatedAt { get; init; } = string.Empty; }
+    private sealed class MetricRow { public string MetricName { get; init; } = string.Empty; public string? Period { get; init; } public double? Value { get; init; } public string? Unit { get; init; } public string? Currency { get; init; } public string? EvidenceDocumentTitle { get; init; } public string? EvidenceLocator { get; init; } public string? SnippetId { get; init; } }
+    private sealed class EventRow { public string EventDate { get; init; } = string.Empty; public string EventType { get; init; } = string.Empty; public string? Confidence { get; init; } public string Description { get; init; } = string.Empty; public string? EvidenceDocumentTitle { get; init; } public string? EvidenceLocator { get; init; } }
+    private sealed class ArtifactRow { public string Id { get; init; } = string.Empty; public string Title { get; init; } = string.Empty; public string Content { get; init; } = string.Empty; }
+    private sealed class DocumentRow { public string Id { get; init; } = string.Empty; public string Title { get; init; } = string.Empty; public string FilePath { get; init; } = string.Empty; public string ContentHash { get; init; } = string.Empty; }
 }
