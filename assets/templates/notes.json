@@ -1,0 +1,29 @@
+[
+  {
+    "id": "thesis-note",
+    "name": "Thesis template",
+    "description": "Structured investment thesis with bull/bear framing.",
+    "title": "[Company] Thesis",
+    "noteType": "thesis",
+    "tags": ["thesis"],
+    "content": "## Summary\n\n## Bull case\n\n## Bear case\n\n## Risks\n\n## Catalysts\n\n## Valuation\n\n## What changes my mind\n"
+  },
+  {
+    "id": "earnings-review-note",
+    "name": "Earnings review template",
+    "description": "Post-earnings structured review.",
+    "title": "[Company] Earnings Review",
+    "noteType": "log",
+    "tags": ["earnings", "review"],
+    "content": "## Quarter at a glance\n\n## Key beats / misses\n\n## Guidance changes\n\n## Management commentary\n\n## KPI updates\n\n## Follow-up questions\n\n## Portfolio action\n"
+  },
+  {
+    "id": "meeting-notes",
+    "name": "Meeting notes template",
+    "description": "Template for management, expert, or team calls.",
+    "title": "Meeting Notes - [Topic]",
+    "noteType": "meeting",
+    "tags": ["meeting"],
+    "content": "## Meeting details\n- Date:\n- Participants:\n- Company/Topic:\n\n## Agenda\n\n## Notes\n\n## Decisions\n\n## Follow-ups\n"
+  }
+]

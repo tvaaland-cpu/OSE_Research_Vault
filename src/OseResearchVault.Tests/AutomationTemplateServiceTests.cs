@@ -11,6 +11,7 @@ public sealed class AutomationTemplateServiceTests
 
         var daily = service.CreateAutomationFromTemplate("daily-review");
         var weeklyReview = service.CreateAutomationFromTemplate("weekly-review");
+        var watchlistScan = service.CreateAutomationFromTemplate("watchlist-scan");
         var quarterlyReminder = service.CreateAutomationFromTemplate("quarterly-review-reminder");
         var inbox = service.CreateAutomationFromTemplate("import-inbox-hourly");
 
@@ -21,6 +22,10 @@ public sealed class AutomationTemplateServiceTests
         Assert.Equal("Weekly Review", weeklyReview.Name);
         Assert.Equal("Weekly on Monday at 08:00", weeklyReview.ScheduleSummary);
         Assert.Contains("generate_weekly_review", weeklyReview.Payload);
+
+        Assert.Equal("Watchlist Scan", watchlistScan.Name);
+        Assert.Equal("Weekly on Monday at 09:00", watchlistScan.ScheduleSummary);
+        Assert.Contains("watchlist_scan", watchlistScan.Payload);
 
         Assert.Equal("Quarterly Review Reminder", quarterlyReminder.Name);
         Assert.Equal("Quarterly on first business day at 08:00", quarterlyReminder.ScheduleSummary);

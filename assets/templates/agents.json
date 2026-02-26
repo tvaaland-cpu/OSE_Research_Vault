@@ -1,0 +1,29 @@
+[
+  {
+    "id": "earnings-summarizer",
+    "name": "Earnings summarizer (local docs)",
+    "description": "Summarize latest earnings using indexed local documents.",
+    "goal": "Summarize the most recent earnings update and highlight deltas vs prior quarter.",
+    "instructions": "Use local vault evidence first. Extract revenue, margin, guidance, and notable management commentary. Include direct evidence links.",
+    "allowedTools": ["retrieve", "summarize"],
+    "evidencePolicy": "required"
+  },
+  {
+    "id": "competitor-scan",
+    "name": "Competitor scan (local + connectors)",
+    "description": "Scan local notes/docs and connector snapshots for competitor updates.",
+    "goal": "Identify competitor developments that may impact tracked companies.",
+    "instructions": "Blend local evidence with connector snapshots. Group findings by competitor and include confidence labels.",
+    "allowedTools": ["retrieve", "connector.fetch", "summarize"],
+    "evidencePolicy": "required"
+  },
+  {
+    "id": "risk-checklist",
+    "name": "Risk checklist",
+    "description": "Run a repeatable downside and risk drift checklist.",
+    "goal": "Surface top downside risks and flag what changed since last review.",
+    "instructions": "Use a checklist format: business model, financial, governance, macro/regulatory, and thesis-break risks. Cite evidence for each item.",
+    "allowedTools": ["retrieve", "summarize"],
+    "evidencePolicy": "required"
+  }
+]

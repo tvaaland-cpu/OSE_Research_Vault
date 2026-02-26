@@ -535,7 +535,63 @@
                 </Grid>
             </Grid>
         </Grid>
-
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsTemplatesSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Templates" FontSize="28" FontWeight="SemiBold"/>
+                <TextBlock Text="One-click starter templates for notes, agents, and automations." Margin="0,6,0,0" Foreground="#FF2D3748"/>
+            </StackPanel>
+            <TabControl Grid.Row="1">
+                <TabItem Header="Notes">
+                    <ListBox ItemsSource="{Binding NoteTemplates}" BorderThickness="0" Margin="8">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,8" Foreground="#FF4A5568"/>
+                                        <Button Content="Create Note" Width="140" Command="{Binding DataContext.UseNoteTemplateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+                <TabItem Header="Agents">
+                    <ListBox ItemsSource="{Binding AgentGalleryTemplates}" BorderThickness="0" Margin="8">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,8" Foreground="#FF4A5568"/>
+                                        <Button Content="Create Agent" Width="140" Command="{Binding DataContext.UseAgentGalleryTemplateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+                <TabItem Header="Automations">
+                    <ListBox ItemsSource="{Binding AutomationGalleryTemplates}" BorderThickness="0" Margin="8">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,8" Foreground="#FF4A5568"/>
+                                        <Button Content="Create Automation" Width="160" Command="{Binding DataContext.UseAutomationGalleryTemplateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </TabItem>
+            </TabControl>
+        </Grid>
 
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsAutomationsSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>

@@ -25,6 +25,14 @@ public sealed class InMemoryAutomationTemplateService : IAutomationTemplateServi
         },
         new()
         {
+            Id = "watchlist-scan",
+            Name = "Watchlist Scan",
+            Description = "Compile watchlist changes and key catalysts each week.",
+            ScheduleSummary = "Weekly on Monday at 09:00",
+            Payload = "{\"job\":\"watchlist_scan\"}"
+        },
+        new()
+        {
             Id = "quarterly-review-reminder",
             Name = "Quarterly Review Reminder",
             Description = "Notify on the first business day of each quarter to generate per-company quarterly reviews.",
