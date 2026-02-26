@@ -307,6 +307,166 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.ExecuteAsync(new CommandDefinition("DELETE FROM metric WHERE id = @Id", new { Id = metricId }, cancellationToken: cancellationToken));
     }
 
+
+    public async Task<IReadOnlyList<CatalystRecord>> GetCompanyCatalystsAsync(string companyId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<CatalystRow>(new CommandDefinition(
+            @"SELECT catalyst_id AS CatalystId,
+                     COALESCE(workspace_id, '') AS WorkspaceId,
+                     company_id AS CompanyId,
+                     title AS Title,
+                     description AS Description,
+                     expected_start AS ExpectedStart,
+                     expected_end AS ExpectedEnd,
+                     status AS Status,
+                     impact AS Impact,
+                     notes AS Notes,
+                     created_at AS CreatedAt,
+                     updated_at AS UpdatedAt
+                FROM catalyst
+               WHERE company_id = @CompanyId
+            ORDER BY CASE status WHEN 'open' THEN 0 WHEN 'done' THEN 1 ELSE 2 END,
+                     expected_start IS NULL,
+                     expected_start,
+                     created_at",
+            new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        var catalysts = rows.Select(static row => new CatalystRecord
+        {
+            CatalystId = row.CatalystId,
+            WorkspaceId = row.WorkspaceId,
+            CompanyId = row.CompanyId,
+            Title = row.Title,
+            Description = row.Description,
+            ExpectedStart = row.ExpectedStart,
+            ExpectedEnd = row.ExpectedEnd,
+            Status = row.Status,
+            Impact = row.Impact,
+            Notes = row.Notes,
+            CreatedAt = row.CreatedAt,
+            UpdatedAt = row.UpdatedAt
+        }).ToList();
+
+        if (catalysts.Count == 0)
+        {
+            return catalysts;
+        }
+
+        var snippetRows = await connection.QueryAsync<(string CatalystId, string SnippetId)>(new CommandDefinition(
+            @"SELECT catalyst_id AS CatalystId, snippet_id AS SnippetId
+                FROM catalyst_snippet
+               WHERE catalyst_id IN @CatalystIds",
+            new { CatalystIds = catalysts.Select(c => c.CatalystId).ToArray() }, cancellationToken: cancellationToken));
+
+        var snippetLookup = snippetRows
+            .GroupBy(static x => x.CatalystId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static g => g.Key, static g => (IReadOnlyList<string>)g.Select(x => x.SnippetId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        return catalysts.Select(c => new CatalystRecord
+        {
+            CatalystId = c.CatalystId,
+            WorkspaceId = c.WorkspaceId,
+            CompanyId = c.CompanyId,
+            Title = c.Title,
+            Description = c.Description,
+            ExpectedStart = c.ExpectedStart,
+            ExpectedEnd = c.ExpectedEnd,
+            Status = c.Status,
+            Impact = c.Impact,
+            Notes = c.Notes,
+            CreatedAt = c.CreatedAt,
+            UpdatedAt = c.UpdatedAt,
+            SnippetIds = snippetLookup.TryGetValue(c.CatalystId, out var ids) ? ids : []
+        }).ToList();
+    }
+
+    public async Task<string> CreateCatalystAsync(string companyId, CatalystUpsertRequest request, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default)
+    {
+        ValidateCatalyst(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+        var catalystId = Guid.NewGuid().ToString();
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO catalyst (catalyst_id, workspace_id, company_id, title, description, expected_start, expected_end, status, impact, notes, created_at, updated_at)
+              VALUES (@CatalystId, @WorkspaceId, @CompanyId, @Title, @Description, @ExpectedStart, @ExpectedEnd, @Status, @Impact, @Notes, @Now, @Now)",
+            new
+            {
+                CatalystId = catalystId,
+                WorkspaceId = workspaceId,
+                CompanyId = companyId,
+                Title = request.Title.Trim(),
+                Description = NormalizeNullable(request.Description),
+                ExpectedStart = NormalizeNullable(request.ExpectedStart),
+                ExpectedEnd = NormalizeNullable(request.ExpectedEnd),
+                Status = request.Status.Trim().ToLowerInvariant(),
+                Impact = request.Impact.Trim().ToLowerInvariant(),
+                Notes = NormalizeNullable(request.Notes),
+                Now = now
+            }, cancellationToken: cancellationToken));
+
+        await ReplaceCatalystSnippetsAsync(connection, workspaceId, catalystId, snippetIds, cancellationToken);
+
+        return catalystId;
+    }
+
+    public async Task UpdateCatalystAsync(string catalystId, CatalystUpsertRequest request, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default)
+    {
+        ValidateCatalyst(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var workspaceId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            "SELECT workspace_id FROM catalyst WHERE catalyst_id = @CatalystId",
+            new { CatalystId = catalystId }, cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE catalyst
+                 SET title = @Title,
+                     description = @Description,
+                     expected_start = @ExpectedStart,
+                     expected_end = @ExpectedEnd,
+                     status = @Status,
+                     impact = @Impact,
+                     notes = @Notes,
+                     updated_at = @Now
+               WHERE catalyst_id = @CatalystId",
+            new
+            {
+                CatalystId = catalystId,
+                Title = request.Title.Trim(),
+                Description = NormalizeNullable(request.Description),
+                ExpectedStart = NormalizeNullable(request.ExpectedStart),
+                ExpectedEnd = NormalizeNullable(request.ExpectedEnd),
+                Status = request.Status.Trim().ToLowerInvariant(),
+                Impact = request.Impact.Trim().ToLowerInvariant(),
+                Notes = NormalizeNullable(request.Notes),
+                Now = now
+            }, cancellationToken: cancellationToken));
+
+        await ReplaceCatalystSnippetsAsync(connection, workspaceId, catalystId, snippetIds, cancellationToken);
+    }
+
+    public async Task DeleteCatalystAsync(string catalystId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM catalyst WHERE catalyst_id = @CatalystId", new { CatalystId = catalystId }, cancellationToken: cancellationToken));
+    }
+
     public async Task<IReadOnlyList<ScenarioRecord>> GetCompanyScenariosAsync(string companyId, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -836,6 +996,49 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         return builder.ToString().Trim('_');
     }
 
+
+    private static void ValidateCatalyst(CatalystUpsertRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            throw new InvalidOperationException("Catalyst title is required.");
+        }
+
+        var status = request.Status.Trim().ToLowerInvariant();
+        if (status is not ("open" or "done" or "invalidated"))
+        {
+            throw new InvalidOperationException("Catalyst status must be open, done, or invalidated.");
+        }
+
+        var impact = request.Impact.Trim().ToLowerInvariant();
+        if (impact is not ("low" or "med" or "high"))
+        {
+            throw new InvalidOperationException("Catalyst impact must be low, med, or high.");
+        }
+    }
+
+    private static string? NormalizeNullable(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static async Task ReplaceCatalystSnippetsAsync(SqliteConnection connection, string? workspaceId, string catalystId, IReadOnlyList<string>? snippetIds, CancellationToken cancellationToken)
+    {
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM catalyst_snippet WHERE catalyst_id = @CatalystId", new { CatalystId = catalystId }, cancellationToken: cancellationToken));
+
+        if (snippetIds is null || snippetIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var snippetId in snippetIds.Where(static id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO catalyst_snippet (workspace_id, catalyst_id, snippet_id) VALUES (@WorkspaceId, @CatalystId, @SnippetId)",
+                new { WorkspaceId = workspaceId, CatalystId = catalystId, SnippetId = snippetId }, cancellationToken: cancellationToken));
+        }
+    }
+
     private static async Task<string> EnsureWorkspaceAsync(string databasePath, CancellationToken cancellationToken)
     {
         await using var connection = OpenConnection(databasePath);
@@ -876,6 +1079,23 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         public string? SourceTitle { get; init; }
         public string? SnippetText { get; init; }
         public string CreatedAt { get; init; } = string.Empty;
+    }
+
+
+    private sealed class CatalystRow
+    {
+        public string CatalystId { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
+        public string CompanyId { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string? Description { get; init; }
+        public string? ExpectedStart { get; init; }
+        public string? ExpectedEnd { get; init; }
+        public string Status { get; init; } = string.Empty;
+        public string Impact { get; init; } = string.Empty;
+        public string? Notes { get; init; }
+        public string CreatedAt { get; init; } = string.Empty;
+        public string UpdatedAt { get; init; } = string.Empty;
     }
 
     private sealed class CompanyRow
