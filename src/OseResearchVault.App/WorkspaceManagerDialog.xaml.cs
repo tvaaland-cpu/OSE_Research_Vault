@@ -77,6 +77,33 @@ public partial class WorkspaceManagerDialog : Window
         Close();
     }
 
+
+    private async void Clone_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (WorkspaceGrid.SelectedItem is not WorkspaceSummary selected)
+        {
+            return;
+        }
+
+        var suggestedFolder = Path.Combine(Path.GetDirectoryName(selected.Path) ?? selected.Path, $"{Path.GetFileName(selected.Path)}-copy");
+        var dialog = new CloneWorkspaceDialog(selected.Name, suggestedFolder) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await _workspaceService.CloneWorkspaceAsync(selected.Id, dialog.DestinationFolder, dialog.WorkspaceName);
+            await ReloadAsync();
+            DialogResult = true;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Clone Workspace", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private async void RestoreFromBackup_OnClick(object sender, RoutedEventArgs e)
     {
         var dialog = new RestoreWorkspaceDialog { Owner = this };

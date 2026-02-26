@@ -20,6 +20,7 @@
             <WrapPanel Margin="0,10,0,12">
                 <Button Content="Switch" Width="120" Margin="0,0,8,0" Click="Switch_OnClick"/>
                 <Button Content="Delete reference" Width="140" Click="DeleteReference_OnClick"/>
+                <Button Content="Clone…" Width="120" Margin="8,0,0,0" Click="Clone_OnClick"/>
                 <Button Content="Restore from backup…" Width="170" Margin="8,0,0,0" Click="RestoreFromBackup_OnClick"/>
             </WrapPanel>
 
