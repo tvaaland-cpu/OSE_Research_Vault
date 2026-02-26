@@ -658,7 +658,8 @@
                 <GroupBox Header="Templates" Grid.Column="0">
                     <StackPanel Margin="6">
                         <Button Content="Use Daily review (08:00)" Command="{Binding CreateDailyReviewAutomationCommand}" Margin="0,0,0,6"/>
-                        <Button Content="Use Weekly watchlist scan (Mon 08:30)" Command="{Binding CreateWeeklyWatchlistAutomationCommand}" Margin="0,0,0,6"/>
+                        <Button Content="Use Weekly Review (Mon 08:00)" Command="{Binding CreateWeeklyWatchlistAutomationCommand}" Margin="0,0,0,6"/>
+                        <Button Content="Use Quarterly Review Reminder (Quarter start 08:00)" Command="{Binding CreateQuarterlyReviewReminderAutomationCommand}" Margin="0,0,0,6"/>
                         <Button Content="Use Import inbox hourly (60 min)" Command="{Binding CreateImportInboxAutomationCommand}"/>
                     </StackPanel>
                 </GroupBox>
