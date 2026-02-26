@@ -1,0 +1,64 @@
+<Window x:Class="OseResearchVault.App.AutomationEditorDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Automation Editor"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight">
+    <Grid Margin="16" MinWidth="520">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="150"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Name" FontWeight="SemiBold"/>
+        <TextBox x:Name="NameText" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Enabled" FontWeight="SemiBold"/>
+        <CheckBox x:Name="EnabledCheck" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" VerticalAlignment="Center"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Schedule type" FontWeight="SemiBold"/>
+        <ComboBox x:Name="ScheduleTypeCombo" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" SelectionChanged="ScheduleTypeCombo_OnSelectionChanged">
+            <ComboBoxItem Content="Interval (minutes)" Tag="interval"/>
+            <ComboBoxItem Content="Daily time (HH:MM)" Tag="daily"/>
+        </ComboBox>
+
+        <TextBlock x:Name="IntervalLabel" Grid.Row="3" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Interval minutes" FontWeight="SemiBold"/>
+        <TextBox x:Name="IntervalText" Grid.Row="3" Grid.Column="1" Margin="0,0,0,8"/>
+
+        <TextBlock x:Name="DailyLabel" Grid.Row="4" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Daily time" FontWeight="SemiBold"/>
+        <TextBox x:Name="DailyTimeText" Grid.Row="4" Grid.Column="1" Margin="0,0,0,8"/>
+
+        <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Payload type" FontWeight="SemiBold"/>
+        <ComboBox x:Name="PayloadTypeCombo" Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" SelectionChanged="PayloadTypeCombo_OnSelectionChanged">
+            <ComboBoxItem Content="AskMyVault"/>
+            <ComboBoxItem Content="Agent template"/>
+        </ComboBox>
+
+        <TextBlock x:Name="AgentLabel" Grid.Row="6" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Agent template" FontWeight="SemiBold"/>
+        <ComboBox x:Name="AgentCombo" Grid.Row="6" Grid.Column="1" Margin="0,0,0,8" DisplayMemberPath="Name" SelectedValuePath="Id"/>
+
+        <TextBlock Grid.Row="7" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Center" Text="Company scope" FontWeight="SemiBold"/>
+        <ComboBox x:Name="CompanyScopeCombo" Grid.Row="7" Grid.Column="1" Margin="0,0,0,8"/>
+
+        <TextBlock Grid.Row="8" Grid.Column="0" Margin="0,0,8,8" VerticalAlignment="Top" Text="Query text" FontWeight="SemiBold"/>
+        <StackPanel Grid.Row="8" Grid.Column="1">
+            <TextBox x:Name="QueryText" Height="90" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Width="90" Margin="0,0,8,0" IsCancel="True"/>
+                <Button Content="Save" Width="90" IsDefault="True" Click="Save_OnClick"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>
