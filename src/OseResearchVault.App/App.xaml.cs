@@ -99,6 +99,7 @@ public partial class App : Application
         services.AddSingleton<IRedactionService, RegexRedactionService>();
         services.AddSingleton<IExportService, SqliteExportService>();
         services.AddSingleton<IBackupService, SqliteBackupService>();
+        services.AddSingleton<IShareLogService, SqliteShareLogService>();
         services.AddSingleton<IMemoPublishService, SqliteMemoPublishService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();

@@ -18,9 +18,19 @@ public partial class MainWindow
         public RedactionOptions Options { get; init; } = new();
     }
 
+    private sealed class ShareLogListItem
+    {
+        public string CreatedAt { get; init; } = string.Empty;
+        public string Action { get; init; } = string.Empty;
+        public string Company { get; init; } = string.Empty;
+        public string Profile { get; init; } = string.Empty;
+        public string OutputPath { get; init; } = string.Empty;
+    }
+
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
         await RefreshExportProfilesAsync();
+        await RefreshShareLogAsync();
     }
 
     private async Task RefreshExportProfilesAsync()
@@ -28,6 +38,22 @@ public partial class MainWindow
         var profiles = await _exportService.GetExportProfilesAsync(string.Empty);
         ExportProfilesListBox.ItemsSource = profiles
             .Select(p => new ExportProfileListItem { ProfileId = p.ProfileId, Name = p.Name, Options = p.Options })
+            .ToList();
+    }
+
+
+    private async Task RefreshShareLogAsync()
+    {
+        var rows = await _shareLogService.GetRecentAsync(string.Empty, 200);
+        ShareLogDataGrid.ItemsSource = rows
+            .Select(log => new ShareLogListItem
+            {
+                CreatedAt = log.CreatedAt,
+                Action = log.Action,
+                Company = string.IsNullOrWhiteSpace(log.TargetCompanyName) ? (log.TargetCompanyId ?? string.Empty) : log.TargetCompanyName,
+                Profile = string.IsNullOrWhiteSpace(log.ProfileName) ? (log.ProfileId ?? string.Empty) : log.ProfileName,
+                OutputPath = log.OutputPath
+            })
             .ToList();
     }
 
@@ -58,6 +84,7 @@ public partial class MainWindow
 
         await _exportService.SaveExportProfileAsync(string.Empty, request);
         await RefreshExportProfilesAsync();
+        await RefreshShareLogAsync();
     }
 
     private async void DeleteExportProfile_OnClick(object sender, RoutedEventArgs e)
@@ -71,6 +98,7 @@ public partial class MainWindow
         _selectedExportProfileId = null;
         ExportProfileNameTextBox.Text = string.Empty;
         await RefreshExportProfilesAsync();
+        await RefreshShareLogAsync();
     }
 
     private void PreviewRedaction_OnClick(object sender, RoutedEventArgs e)
