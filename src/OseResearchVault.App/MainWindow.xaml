@@ -761,7 +761,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
                 <StackPanel Grid.Column="2">
-                    <TextBlock Text="URL" FontWeight="SemiBold"/>
+                    <TextBlock Text="Input (URL or CSV path)" FontWeight="SemiBold"/>
                     <TextBox Margin="0,4,0,8" Text="{Binding ConnectorUrl, UpdateSourceTrigger=PropertyChanged}"/>
                     <Button Content="Run" Width="120" Command="{Binding RunConnectorCommand}"/>
                     <TextBlock Margin="0,12,0,0" Text="{Binding ConnectorRunResult}" TextWrapping="Wrap"/>
