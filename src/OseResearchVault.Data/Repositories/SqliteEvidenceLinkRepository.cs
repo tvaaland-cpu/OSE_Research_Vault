@@ -82,10 +82,13 @@ public sealed class SqliteEvidenceLinkRepository(IAppSettingsService appSettings
                      el.confidence AS RelevanceScore,
                      el.created_at AS CreatedAt,
                      s.quote_text AS SnippetText,
-                     d.title AS DocumentTitle
+                     d.title AS DocumentTitle,
+                     d.company_id AS CompanyId,
+                     c.name AS CompanyName
                 FROM evidence_link el
                 LEFT JOIN snippet s ON el.to_entity_type = 'snippet' AND s.id = el.to_entity_id
                 LEFT JOIN document d ON d.id = CASE WHEN el.to_entity_type = 'snippet' THEN s.document_id ELSE el.to_entity_id END
+                LEFT JOIN company c ON c.id = d.company_id
                WHERE el.from_entity_type = 'artifact'
                  AND el.from_entity_id = @ArtifactId
             ORDER BY el.created_at DESC",
@@ -121,7 +124,9 @@ public sealed class SqliteEvidenceLinkRepository(IAppSettingsService appSettings
             RelevanceScore = row.RelevanceScore,
             CreatedAt = row.CreatedAt,
             SnippetText = row.SnippetText,
-            DocumentTitle = row.DocumentTitle
+            DocumentTitle = row.DocumentTitle,
+            CompanyId = row.CompanyId,
+            CompanyName = row.CompanyName
         };
     }
 
@@ -153,6 +158,8 @@ public sealed class SqliteEvidenceLinkRepository(IAppSettingsService appSettings
         public string CreatedAt { get; init; } = string.Empty;
         public string? SnippetText { get; init; }
         public string? DocumentTitle { get; init; }
+        public string? CompanyId { get; init; }
+        public string? CompanyName { get; init; }
     }
 
     private sealed class RelationPayload
