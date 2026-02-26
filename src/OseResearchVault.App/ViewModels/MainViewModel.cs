@@ -2834,6 +2834,13 @@ public sealed class MainViewModel : ViewModelBase
         InvestmentMemoStatusMessage = "Investment memo created.";
     }
 
+    public async Task RefreshAfterQuarterlyReviewAsync(string companyId)
+    {
+        await LoadNotesAsync();
+        await LoadCompanyHubAsync(companyId);
+        NoteStatusMessage = "Quarterly review created.";
+    }
+
     public async Task<string> ImportPricesCsvAsync(string csvFilePath, string? dateColumn = null, string? closeColumn = null)
     {
         if (SelectedHubCompany is null)

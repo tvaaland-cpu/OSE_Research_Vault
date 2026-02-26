@@ -286,6 +286,33 @@ public partial class MainWindow : Window
         MessageBox.Show(this, message, "Investment Memo", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    private async void GenerateQuarterlyReview_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedHubCompany is null)
+        {
+            MessageBox.Show(this, "Select a company first.", "Quarterly Review", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var quarter = ((now.Month - 1) / 3) + 1;
+        var dialog = new QuarterlyReviewPeriodDialog($"{now.Year}Q{quarter}")
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var result = await _reviewService.GenerateQuarterlyCompanyReviewAsync(string.Empty, _viewModel.SelectedHubCompany.Id, dialog.PeriodLabel);
+        await _notificationService.AddNotification("info", "Quarterly review generated", $"{result.NoteTitle} created with {result.DocumentCount} documents and {result.JournalEntriesCount} journal entries.");
+        await _viewModel.RefreshAfterQuarterlyReviewAsync(_viewModel.SelectedHubCompany.Id);
+
+        MessageBox.Show(this, $"Created note: {result.NoteTitle}", "Quarterly Review", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     private async void ExportResearchPack_OnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedHubCompany is null)
