@@ -529,6 +529,19 @@
                             </DataGrid>
                         </DockPanel>
                     </GroupBox>
+                    <GroupBox Header="Suggestions" Margin="0,0,0,8">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Bottom" Content="Apply Suggestion" Margin="0,8,0,0" Command="{Binding ApplySelectedEnrichmentSuggestionCommand}"/>
+                            <DataGrid ItemsSource="{Binding DataQualityEnrichmentSuggestions}" SelectedItem="{Binding SelectedEnrichmentSuggestion}" AutoGenerateColumns="False" IsReadOnly="True" Height="180">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Item" Binding="{Binding ItemType}" Width="80"/>
+                                    <DataGridTextColumn Header="Title" Binding="{Binding ItemTitle}" Width="*"/>
+                                    <DataGridTextColumn Header="Company" Binding="{Binding CompanyName}" Width="150"/>
+                                    <DataGridTextColumn Header="Reason" Binding="{Binding SuggestionLabel}" Width="220"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </GroupBox>
                     <GroupBox Header="Evidence Gaps (artifacts with no evidence links)">
                         <DockPanel>
                             <Button DockPanel.Dock="Bottom" Content="Open Artifact" Margin="0,8,0,0" Command="{Binding OpenEvidenceGapCommand}"/>

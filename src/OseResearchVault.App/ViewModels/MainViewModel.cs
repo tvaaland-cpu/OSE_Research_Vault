@@ -95,6 +95,7 @@ public sealed class MainViewModel : ViewModelBase
     private DataQualityDuplicateGroupViewModel? _selectedDuplicateGroup;
     private DataQualityDuplicateDocumentViewModel? _selectedDuplicateKeepDocument;
     private DataQualityArtifactGapViewModel? _selectedEvidenceGap;
+    private DataQualityEnrichmentSuggestionViewModel? _selectedEnrichmentSuggestion;
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IDataQualityService dataQualityService)
     private string _automationStatusMessage = "Create automations from built-in templates.";
@@ -211,6 +212,7 @@ public sealed class MainViewModel : ViewModelBase
         DataQualityEvidenceGaps = [];
         DataQualityMetricIssues = [];
         DataQualitySnippetIssues = [];
+        DataQualityEnrichmentSuggestions = [];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
         SaveDocumentCompanyCommand = new RelayCommand(() => _ = SaveSelectedDocumentCompanyAsync(), () => SelectedDocument is not null);
@@ -235,6 +237,7 @@ public sealed class MainViewModel : ViewModelBase
         LinkSelectedUnlinkedNoteCommand = new RelayCommand(() => _ = LinkSelectedUnlinkedNoteAsync(), () => SelectedUnlinkedNote is not null && SelectedQualityCompany is not null);
         ArchiveDuplicateGroupCommand = new RelayCommand(() => _ = ArchiveDuplicateGroupAsync(), () => SelectedDuplicateGroup is not null && SelectedDuplicateKeepDocument is not null);
         OpenEvidenceGapCommand = new RelayCommand(OpenSelectedEvidenceGap, () => SelectedEvidenceGap is not null);
+        ApplySelectedEnrichmentSuggestionCommand = new RelayCommand(() => _ = ApplySelectedEnrichmentSuggestionAsync(), () => SelectedEnrichmentSuggestion is not null);
         CreateDailyReviewAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("daily-review"));
         CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-watchlist-scan"));
         CreateImportInboxAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("import-inbox-hourly"));
@@ -291,6 +294,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<DataQualityArtifactGapViewModel> DataQualityEvidenceGaps { get; }
     public ObservableCollection<DataQualityMetricIssueViewModel> DataQualityMetricIssues { get; }
     public ObservableCollection<DataQualitySnippetIssueViewModel> DataQualitySnippetIssues { get; }
+    public ObservableCollection<DataQualityEnrichmentSuggestionViewModel> DataQualityEnrichmentSuggestions { get; }
     public ObservableCollection<NotificationListItemViewModel> Notifications { get; }
     public ObservableCollection<ConnectorListItemViewModel> Connectors { get; }
     public ObservableCollection<AutomationListItemViewModel> Automations { get; }
@@ -320,6 +324,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand LinkSelectedUnlinkedNoteCommand { get; }
     public RelayCommand ArchiveDuplicateGroupCommand { get; }
     public RelayCommand OpenEvidenceGapCommand { get; }
+    public RelayCommand ApplySelectedEnrichmentSuggestionCommand { get; }
     public RelayCommand CreateDailyReviewAutomationCommand { get; }
     public RelayCommand CreateWeeklyWatchlistAutomationCommand { get; }
     public RelayCommand CreateImportInboxAutomationCommand { get; }
@@ -797,6 +802,17 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentEvidencePolicy { get => _agentEvidencePolicy; set => SetProperty(ref _agentEvidencePolicy, value); }
     public string AgentQuery { get => _agentQuery; set => SetProperty(ref _agentQuery, value); }
     public string DataQualityStatusMessage { get => _dataQualityStatusMessage; set => SetProperty(ref _dataQualityStatusMessage, value); }
+    public DataQualityEnrichmentSuggestionViewModel? SelectedEnrichmentSuggestion
+    {
+        get => _selectedEnrichmentSuggestion;
+        set
+        {
+            if (SetProperty(ref _selectedEnrichmentSuggestion, value))
+            {
+                ApplySelectedEnrichmentSuggestionCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     public DataQualityUnlinkedListItemViewModel? SelectedUnlinkedDocument
     {
@@ -2435,7 +2451,23 @@ public sealed class MainViewModel : ViewModelBase
             DataQualitySnippetIssues.Add(new DataQualitySnippetIssueViewModel { SnippetId = item.SnippetId, Locator = item.Locator, ParentReference = parent });
         }
 
-        DataQualityStatusMessage = $"Duplicates: {DataQualityDuplicateGroups.Count}, unlinked docs: {DataQualityUnlinkedDocuments.Count}, unlinked notes: {DataQualityUnlinkedNotes.Count}, evidence gaps: {DataQualityEvidenceGaps.Count}.";
+        DataQualityEnrichmentSuggestions.Clear();
+        foreach (var item in report.EnrichmentSuggestions)
+        {
+            DataQualityEnrichmentSuggestions.Add(new DataQualityEnrichmentSuggestionViewModel
+            {
+                ItemType = item.ItemType,
+                ItemId = item.ItemId,
+                ItemTitle = item.ItemTitle,
+                CompanyId = item.CompanyId,
+                CompanyName = item.CompanyName,
+                MatchedTerm = item.MatchedTerm,
+                MatchReason = item.MatchReason,
+                CreatedAt = FormatDate(item.CreatedAt)
+            });
+        }
+
+        DataQualityStatusMessage = $"Duplicates: {DataQualityDuplicateGroups.Count}, unlinked docs: {DataQualityUnlinkedDocuments.Count}, unlinked notes: {DataQualityUnlinkedNotes.Count}, suggestions: {DataQualityEnrichmentSuggestions.Count}, evidence gaps: {DataQualityEvidenceGaps.Count}.";
     }
 
     private async Task LinkSelectedUnlinkedDocumentAsync()
@@ -2471,6 +2503,23 @@ public sealed class MainViewModel : ViewModelBase
 
         await _dataQualityService.ArchiveDuplicateDocumentsAsync(SelectedDuplicateGroup.ContentHash, SelectedDuplicateKeepDocument.Id);
         await LoadDocumentsAsync();
+        await LoadDataQualityReportAsync();
+    }
+
+    private async Task ApplySelectedEnrichmentSuggestionAsync()
+    {
+        if (SelectedEnrichmentSuggestion is null)
+        {
+            return;
+        }
+
+        await _dataQualityService.ApplyEnrichmentSuggestionAsync(
+            SelectedEnrichmentSuggestion.ItemType,
+            SelectedEnrichmentSuggestion.ItemId,
+            SelectedEnrichmentSuggestion.CompanyId);
+
+        await LoadDocumentsAsync();
+        await LoadNotesAsync();
         await LoadDataQualityReportAsync();
     }
 

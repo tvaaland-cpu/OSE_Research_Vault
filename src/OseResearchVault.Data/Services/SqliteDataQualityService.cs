@@ -110,6 +110,8 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
             ORDER BY s.created_at DESC",
             cancellationToken: cancellationToken))).ToList();
 
+        var enrichmentSuggestions = await LoadEnrichmentSuggestionsAsync(connection, cancellationToken);
+
         return new DataQualityReport
         {
             Duplicates = duplicates,
@@ -117,7 +119,8 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
             UnlinkedNotes = unlinkedNotes,
             EvidenceGaps = evidenceGaps,
             MetricEvidenceIssues = metricIssues,
-            SnippetIssues = snippetIssues
+            SnippetIssues = snippetIssues,
+            EnrichmentSuggestions = enrichmentSuggestions
         };
     }
 
@@ -149,6 +152,20 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
             cancellationToken: cancellationToken));
     }
 
+    public async Task ApplyEnrichmentSuggestionAsync(string itemType, string itemId, string companyId, CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(itemType, "document", StringComparison.OrdinalIgnoreCase))
+        {
+            await LinkDocumentToCompanyAsync(itemId, companyId, cancellationToken);
+            return;
+        }
+
+        if (string.Equals(itemType, "note", StringComparison.OrdinalIgnoreCase))
+        {
+            await LinkNoteToCompanyAsync(itemId, companyId, cancellationToken);
+        }
+    }
+
     public async Task ArchiveDuplicateDocumentsAsync(string contentHash, string keepDocumentId, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -162,6 +179,134 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
                WHERE content_hash = @ContentHash",
             new { KeepId = keepDocumentId, ContentHash = contentHash, Now = DateTime.UtcNow.ToString("O") },
             cancellationToken: cancellationToken));
+    }
+
+    private static async Task<IReadOnlyList<DataQualityEnrichmentSuggestion>> LoadEnrichmentSuggestionsAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var companies = (await connection.QueryAsync<CompanyMatchRow>(new CommandDefinition(
+            @"SELECT id, workspace_id AS WorkspaceId, name, COALESCE(ticker, '') AS Ticker, COALESCE(isin, '') AS Isin
+                FROM company",
+            cancellationToken: cancellationToken))).ToList();
+
+        var documentRows = (await connection.QueryAsync<UnlinkedDocumentMatchRow>(new CommandDefinition(
+            @"SELECT d.id,
+                     d.workspace_id AS WorkspaceId,
+                     d.title,
+                     COALESCE(d.imported_at, d.created_at) AS CreatedAt,
+                     COALESCE(GROUP_CONCAT(dt.content, ' '), '') AS Body
+                FROM document d
+                LEFT JOIN document_text dt ON dt.document_id = d.id
+               WHERE d.company_id IS NULL
+                 AND COALESCE(d.is_archived, 0) = 0
+            GROUP BY d.id, d.workspace_id, d.title, COALESCE(d.imported_at, d.created_at)",
+            cancellationToken: cancellationToken))).ToList();
+
+        var noteRows = (await connection.QueryAsync<UnlinkedNoteMatchRow>(new CommandDefinition(
+            @"SELECT n.id,
+                     n.workspace_id AS WorkspaceId,
+                     n.title,
+                     n.created_at AS CreatedAt,
+                     COALESCE(n.content, '') AS Body
+                FROM note n
+               WHERE n.company_id IS NULL",
+            cancellationToken: cancellationToken))).ToList();
+
+        var suggestions = new List<DataQualityEnrichmentSuggestion>();
+
+        foreach (var row in documentRows)
+        {
+            var suggestion = FindBestSuggestion(
+                companies.Where(c => string.Equals(c.WorkspaceId, row.WorkspaceId, StringComparison.Ordinal)).ToList(),
+                row.Title,
+                row.Body,
+                row.CreatedAt,
+                "document",
+                row.Id);
+            if (suggestion is not null)
+            {
+                suggestions.Add(suggestion);
+            }
+        }
+
+        foreach (var row in noteRows)
+        {
+            var suggestion = FindBestSuggestion(
+                companies.Where(c => string.Equals(c.WorkspaceId, row.WorkspaceId, StringComparison.Ordinal)).ToList(),
+                row.Title,
+                row.Body,
+                row.CreatedAt,
+                "note",
+                row.Id);
+            if (suggestion is not null)
+            {
+                suggestions.Add(suggestion);
+            }
+        }
+
+        return suggestions
+            .OrderByDescending(s => s.CreatedAt, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static DataQualityEnrichmentSuggestion? FindBestSuggestion(
+        IReadOnlyList<CompanyMatchRow> companies,
+        string title,
+        string body,
+        string createdAt,
+        string itemType,
+        string itemId)
+    {
+        var text = string.Join(' ', new[] { title, body }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        DataQualityEnrichmentSuggestion? best = null;
+        var bestScore = 0;
+
+        foreach (var company in companies)
+        {
+            EvaluateCandidate(company.Ticker, "Ticker", 3);
+            EvaluateCandidate(company.Isin, "ISIN", 3);
+            EvaluateCandidate(company.Name, "Company name", 2);
+        }
+
+        return best;
+
+        void EvaluateCandidate(string candidate, string reason, int score)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return;
+            }
+
+            if (text.IndexOf(candidate, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return;
+            }
+
+            if (score < bestScore)
+            {
+                return;
+            }
+
+            var matchingCompany = companies.First(c =>
+                string.Equals(candidate, c.Ticker, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, c.Isin, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, c.Name, StringComparison.OrdinalIgnoreCase));
+
+            best = new DataQualityEnrichmentSuggestion
+            {
+                ItemType = itemType,
+                ItemId = itemId,
+                ItemTitle = title,
+                CompanyId = matchingCompany.Id,
+                CompanyName = matchingCompany.Name,
+                MatchedTerm = candidate,
+                MatchReason = reason,
+                CreatedAt = createdAt
+            };
+            bestScore = score;
+        }
     }
 
     private static SqliteConnection OpenConnection(string databasePath)
@@ -178,5 +323,32 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
         public string ImportedAt { get; init; } = string.Empty;
         public string ContentHash { get; init; } = string.Empty;
         public bool IsArchived { get; init; }
+    }
+
+    private sealed class CompanyMatchRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string Ticker { get; init; } = string.Empty;
+        public string Isin { get; init; } = string.Empty;
+    }
+
+    private sealed class UnlinkedDocumentMatchRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string CreatedAt { get; init; } = string.Empty;
+        public string Body { get; init; } = string.Empty;
+    }
+
+    private sealed class UnlinkedNoteMatchRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string CreatedAt { get; init; } = string.Empty;
+        public string Body { get; init; } = string.Empty;
     }
 }

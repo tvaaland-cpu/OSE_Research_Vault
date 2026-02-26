@@ -8,6 +8,19 @@ public sealed class DataQualityReport
     public IReadOnlyList<DataQualityArtifactGap> EvidenceGaps { get; init; } = [];
     public IReadOnlyList<DataQualityMetricIssue> MetricEvidenceIssues { get; init; } = [];
     public IReadOnlyList<DataQualitySnippetIssue> SnippetIssues { get; init; } = [];
+    public IReadOnlyList<DataQualityEnrichmentSuggestion> EnrichmentSuggestions { get; init; } = [];
+}
+
+public sealed class DataQualityEnrichmentSuggestion
+{
+    public string ItemType { get; init; } = string.Empty;
+    public string ItemId { get; init; } = string.Empty;
+    public string ItemTitle { get; init; } = string.Empty;
+    public string CompanyId { get; init; } = string.Empty;
+    public string CompanyName { get; init; } = string.Empty;
+    public string MatchedTerm { get; init; } = string.Empty;
+    public string MatchReason { get; init; } = string.Empty;
+    public string CreatedAt { get; init; } = string.Empty;
 }
 
 public sealed class DuplicateDocumentGroup
