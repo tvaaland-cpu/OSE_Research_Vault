@@ -2819,6 +2819,14 @@ public sealed class MainViewModel : ViewModelBase
         AgentStatusMessage = $"Evidence gap artifact selected: {SelectedEvidenceGap.Title}";
     }
 
+
+    public async Task RefreshAfterWeeklyReviewAsync()
+    {
+        await LoadNotesAsync();
+        await LoadDashboardAsync();
+        NoteStatusMessage = "Weekly review created.";
+    }
+
     public async Task RefreshAfterInvestmentMemoAsync(string companyId)
     {
         await LoadNotesAsync();
