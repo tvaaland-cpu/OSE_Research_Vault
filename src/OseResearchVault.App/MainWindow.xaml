@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
         Title="OSE Research Vault"
         Width="1280"
@@ -30,6 +31,78 @@
                 </ListBox>
             </StackPanel>
         </Border>
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsDashboardSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Portfolio Dashboard" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding DashboardStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+
+            <Grid Grid.Row="1" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="Position filter" FontWeight="SemiBold" />
+                    <ComboBox SelectedItem="{Binding DashboardPositionFilter}" Margin="0,4,0,0">
+                        <sys:String>Open</sys:String>
+                        <sys:String>Closed</sys:String>
+                        <sys:String>All</sys:String>
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="8,0">
+                    <TextBlock Text="Currency" FontWeight="SemiBold" />
+                    <ComboBox ItemsSource="{Binding DashboardCurrencyOptions}" SelectedItem="{Binding DashboardCurrencyFilter}" Margin="0,4,0,0"/>
+                </StackPanel>
+                <WrapPanel Grid.Column="2" HorizontalAlignment="Right">
+                    <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="6,0">
+                        <StackPanel><TextBlock Text="Invested" FontWeight="SemiBold"/><TextBlock Text="{Binding DashboardTotalInvested}"/></StackPanel>
+                    </Border>
+                    <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="6,0">
+                        <StackPanel><TextBlock Text="Market Value" FontWeight="SemiBold"/><TextBlock Text="{Binding DashboardTotalMarketValue}"/></StackPanel>
+                    </Border>
+                    <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="6,0">
+                        <StackPanel><TextBlock Text="Unrealized P&amp;L" FontWeight="SemiBold"/><TextBlock Text="{Binding DashboardTotalUnrealizedPnl}"/></StackPanel>
+                    </Border>
+                    <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="6,0">
+                        <StackPanel><TextBlock Text="Realized P&amp;L" FontWeight="SemiBold"/><TextBlock Text="{Binding DashboardTotalRealizedPnl}"/></StackPanel>
+                    </Border>
+                </WrapPanel>
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="Biggest winner: " FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding DashboardBiggestWinner}" Margin="0,0,16,0"/>
+                    <TextBlock Text="Biggest loser: " FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding DashboardBiggestLoser}"/>
+                </StackPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding DashboardRows}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Company" Binding="{Binding Company}" Width="2*"/>
+                        <DataGridTextColumn Header="Currency" Binding="{Binding Currency}" Width="*"/>
+                        <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="*"/>
+                        <DataGridTextColumn Header="Avg Cost" Binding="{Binding AverageCost}" Width="*"/>
+                        <DataGridTextColumn Header="Last Price" Binding="{Binding LastPrice}" Width="*"/>
+                        <DataGridTextColumn Header="Market Value" Binding="{Binding MarketValue}" Width="*"/>
+                        <DataGridTextColumn Header="P&amp;L" Binding="{Binding Pnl}" Width="*"/>
+                        <DataGridTextColumn Header="Allocation" Binding="{Binding Allocation}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
 
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsCompaniesSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>

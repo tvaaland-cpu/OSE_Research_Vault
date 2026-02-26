@@ -98,6 +98,17 @@ public sealed class MainViewModel : ViewModelBase
     private DataQualityDuplicateDocumentViewModel? _selectedDuplicateKeepDocument;
     private DataQualityArtifactGapViewModel? _selectedEvidenceGap;
     private DataQualityEnrichmentSuggestionViewModel? _selectedEnrichmentSuggestion;
+    private readonly ITradeService _tradeService;
+    private readonly IPositionAnalyticsService _positionAnalyticsService;
+    private string _dashboardStatusMessage = "Portfolio dashboard ready.";
+    private string _dashboardPositionFilter = "Open";
+    private string _dashboardCurrencyFilter = "All";
+    private string _dashboardTotalInvested = "0.00";
+    private string _dashboardTotalMarketValue = "N/A";
+    private string _dashboardTotalUnrealizedPnl = "N/A";
+    private string _dashboardTotalRealizedPnl = "0.00";
+    private string _dashboardBiggestWinner = "N/A";
+    private string _dashboardBiggestLoser = "N/A";
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IDataQualityService dataQualityService)
     private string _automationStatusMessage = "Create automations from built-in templates.";
@@ -157,6 +168,8 @@ public sealed class MainViewModel : ViewModelBase
         _metricConflictDialogService = metricConflictDialogService;
         _dialogService = dialogService;
         _metricService = metricService;
+        _tradeService = tradeService;
+        _positionAnalyticsService = positionAnalyticsService;
 
         NavigationItems =
         [
@@ -216,6 +229,8 @@ public sealed class MainViewModel : ViewModelBase
         DataQualityMetricIssues = [];
         DataQualitySnippetIssues = [];
         DataQualityEnrichmentSuggestions = [];
+        DashboardRows = [];
+        DashboardCurrencyOptions = ["All"];
 
         RefreshDocumentsCommand = new RelayCommand(() => _ = LoadDocumentsAsync());
         SaveDocumentCompanyCommand = new RelayCommand(() => _ = SaveSelectedDocumentCompanyAsync(), () => SelectedDocument is not null);
@@ -366,10 +381,12 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsAskMyVaultSelected));
                 OnPropertyChanged(nameof(IsConnectorsSelected));
+                OnPropertyChanged(nameof(IsDashboardSelected));
             }
         }
     }
 
+    public bool IsDashboardSelected => IsSelected("Dashboard");
     public bool IsDocumentsSelected => IsSelected("Documents");
     public bool IsCompaniesSelected => IsSelected("Companies");
     public bool IsNotesSelected => IsSelected("Notes");
@@ -418,6 +435,18 @@ public sealed class MainViewModel : ViewModelBase
     }
     public bool IsAskMyVaultSelected => IsSelected("Ask My Vault");
     public bool IsConnectorsSelected => IsSelected("Connectors");
+
+    public ObservableCollection<PortfolioAllocationRowViewModel> DashboardRows { get; }
+    public ObservableCollection<string> DashboardCurrencyOptions { get; }
+    public string DashboardStatusMessage { get => _dashboardStatusMessage; set => SetProperty(ref _dashboardStatusMessage, value); }
+    public string DashboardPositionFilter { get => _dashboardPositionFilter; set { if (SetProperty(ref _dashboardPositionFilter, value)) { ApplyDashboardFilters(); } } }
+    public string DashboardCurrencyFilter { get => _dashboardCurrencyFilter; set { if (SetProperty(ref _dashboardCurrencyFilter, value)) { ApplyDashboardFilters(); } } }
+    public string DashboardTotalInvested { get => _dashboardTotalInvested; set => SetProperty(ref _dashboardTotalInvested, value); }
+    public string DashboardTotalMarketValue { get => _dashboardTotalMarketValue; set => SetProperty(ref _dashboardTotalMarketValue, value); }
+    public string DashboardTotalUnrealizedPnl { get => _dashboardTotalUnrealizedPnl; set => SetProperty(ref _dashboardTotalUnrealizedPnl, value); }
+    public string DashboardTotalRealizedPnl { get => _dashboardTotalRealizedPnl; set => SetProperty(ref _dashboardTotalRealizedPnl, value); }
+    public string DashboardBiggestWinner { get => _dashboardBiggestWinner; set => SetProperty(ref _dashboardBiggestWinner, value); }
+    public string DashboardBiggestLoser { get => _dashboardBiggestLoser; set => SetProperty(ref _dashboardBiggestLoser, value); }
 
     public ConnectorListItemViewModel? SelectedConnector
     {
@@ -975,6 +1004,7 @@ public sealed class MainViewModel : ViewModelBase
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
         await LoadDataQualityReportAsync();
+        await LoadDashboardAsync();
         LoadAutomationTemplates();
         await LoadImportInboxSettingsAsync();
         await _importInboxWatcher.ReloadAsync();
@@ -2579,6 +2609,112 @@ public sealed class MainViewModel : ViewModelBase
         var result = await _companyService.ImportCompanyDailyPricesCsvAsync(SelectedHubCompany.Id, csvFilePath, dateColumn, closeColumn);
         await LoadCompanyHubAsync(SelectedHubCompany.Id);
         return $"Imported {result.InsertedOrUpdatedCount} rows ({result.SkippedCount} skipped).";
+    }
+
+
+    private PortfolioDashboardSnapshot _dashboardSnapshot = new();
+
+    private async Task LoadDashboardAsync()
+    {
+        DashboardRows.Clear();
+
+        var workspaceId = SelectedSearchWorkspace?.Id ?? WorkspaceOptions.FirstOrDefault()?.Id ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            var workspaces = await _searchService.GetWorkspacesAsync();
+            workspaceId = workspaces.FirstOrDefault()?.Id ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            DashboardStatusMessage = "No workspace available.";
+            return;
+        }
+
+        var companies = await _companyService.GetCompaniesAsync();
+        if (companies.Count == 0)
+        {
+            DashboardStatusMessage = "No companies available.";
+            _dashboardSnapshot = new PortfolioDashboardSnapshot();
+            ApplyDashboardFilters();
+            return;
+        }
+
+        var inputRows = new List<PortfolioDashboardInputRow>();
+        foreach (var company in companies)
+        {
+            var latestPrice = await _companyService.GetLatestCompanyPriceAsync(company.CompanyId);
+            var stats = await _positionAnalyticsService.GetPositionStatsAsync(workspaceId, company.CompanyId, latestPrice: latestPrice?.Close);
+            if (stats.NetQuantity == 0d && Math.Abs(stats.RealizedPnl) < 0.000001d)
+            {
+                continue;
+            }
+
+            inputRows.Add(new PortfolioDashboardInputRow
+            {
+                CompanyId = company.CompanyId,
+                CompanyName = company.Name,
+                Currency = latestPrice?.Currency ?? company.Currency ?? "N/A",
+                PositionStats = stats,
+                LastPrice = latestPrice?.Close
+            });
+        }
+
+        _dashboardSnapshot = PortfolioDashboardCalculator.Build(inputRows);
+        DashboardCurrencyOptions.Clear();
+        DashboardCurrencyOptions.Add("All");
+        foreach (var currency in _dashboardSnapshot.Rows.Select(r => r.Currency).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(c => c))
+        {
+            DashboardCurrencyOptions.Add(currency);
+        }
+
+        DashboardStatusMessage = _dashboardSnapshot.Rows.Count == 0
+            ? "No portfolio positions available."
+            : $"Loaded {_dashboardSnapshot.Rows.Count} positions.";
+
+        ApplyDashboardFilters();
+    }
+
+    private void ApplyDashboardFilters()
+    {
+        DashboardRows.Clear();
+
+        IEnumerable<PortfolioDashboardRow> rows = _dashboardSnapshot.Rows;
+        rows = DashboardPositionFilter switch
+        {
+            "Closed" => rows.Where(r => Math.Abs(r.Quantity) < 0.000001d),
+            "Open" => rows.Where(r => Math.Abs(r.Quantity) >= 0.000001d),
+            _ => rows
+        };
+
+        if (!string.Equals(DashboardCurrencyFilter, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            rows = rows.Where(r => string.Equals(r.Currency, DashboardCurrencyFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var filtered = rows.ToList();
+        foreach (var row in filtered)
+        {
+            DashboardRows.Add(new PortfolioAllocationRowViewModel
+            {
+                Company = row.CompanyName,
+                Currency = row.Currency,
+                Quantity = row.Quantity,
+                AverageCost = row.AverageCost,
+                LastPrice = row.LastPrice?.ToString("0.00", CultureInfo.InvariantCulture) ?? "N/A",
+                MarketValue = row.MarketValue?.ToString("0.00", CultureInfo.InvariantCulture) ?? "N/A",
+                Pnl = row.UnrealizedPnl?.ToString("0.00", CultureInfo.InvariantCulture) ?? "N/A",
+                Allocation = $"{row.AllocationPercent:0.00}%",
+                IsOpen = Math.Abs(row.Quantity) >= 0.000001d
+            });
+        }
+
+        DashboardTotalInvested = filtered.Sum(r => r.CostBasis).ToString("0.00", CultureInfo.InvariantCulture);
+        DashboardTotalMarketValue = filtered.All(r => r.MarketValue.HasValue) ? filtered.Sum(r => r.MarketValue ?? 0d).ToString("0.00", CultureInfo.InvariantCulture) : "N/A";
+        DashboardTotalUnrealizedPnl = filtered.All(r => r.UnrealizedPnl.HasValue) ? filtered.Sum(r => r.UnrealizedPnl ?? 0d).ToString("0.00", CultureInfo.InvariantCulture) : "N/A";
+        DashboardTotalRealizedPnl = filtered.Sum(r => r.RealizedPnl).ToString("0.00", CultureInfo.InvariantCulture);
+        DashboardBiggestWinner = filtered.Where(r => r.UnrealizedPnl.HasValue).OrderByDescending(r => r.UnrealizedPnl).FirstOrDefault()?.CompanyName ?? "N/A";
+        DashboardBiggestLoser = filtered.Where(r => r.UnrealizedPnl.HasValue).OrderBy(r => r.UnrealizedPnl).FirstOrDefault()?.CompanyName ?? "N/A";
     }
 
     private static string StripHighlight(string value) => value.Replace("<mark>", string.Empty, StringComparison.OrdinalIgnoreCase)
