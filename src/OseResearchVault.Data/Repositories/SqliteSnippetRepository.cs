@@ -113,6 +113,68 @@ public sealed class SqliteSnippetRepository(IAppSettingsService appSettingsServi
         return rows.Select(Map).ToList();
     }
 
+    public async Task<IReadOnlyList<SnippetSearchResult>> SearchSnippetsAsync(string? companyId, string? documentId, string? query, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var normalizedQuery = string.IsNullOrWhiteSpace(query) ? null : query.Trim();
+        var useFts = false;
+
+        if (normalizedQuery is not null)
+        {
+            var ftsTableExists = await connection.QuerySingleAsync<long>(new CommandDefinition(
+                "SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'snippet_fts'",
+                cancellationToken: cancellationToken));
+
+            useFts = ftsTableExists > 0;
+        }
+
+        var rows = await connection.QueryAsync<SnippetSearchRow>(new CommandDefinition(
+            @"SELECT s.id,
+                     s.workspace_id AS WorkspaceId,
+                     s.document_id AS DocumentId,
+                     d.title AS DocumentTitle,
+                     d.company_id AS CompanyId,
+                     c.name AS CompanyName,
+                     s.context AS Locator,
+                     s.quote_text AS Text,
+                     s.created_at AS CreatedAt
+                FROM snippet s
+                INNER JOIN document d ON d.id = s.document_id
+                LEFT JOIN company c ON c.id = d.company_id
+               WHERE (@CompanyId IS NULL OR d.company_id = @CompanyId)
+                 AND (@DocumentId IS NULL OR s.document_id = @DocumentId)
+                 AND (
+                     @Query IS NULL
+                     OR (@UseFts = 1 AND s.id IN (SELECT id FROM snippet_fts WHERE snippet_fts MATCH @Query))
+                     OR (@UseFts = 0 AND lower(s.quote_text) LIKE '%' || lower(@Query) || '%')
+                 )
+            ORDER BY s.created_at DESC
+               LIMIT 200",
+            new
+            {
+                CompanyId = string.IsNullOrWhiteSpace(companyId) ? null : companyId.Trim(),
+                DocumentId = string.IsNullOrWhiteSpace(documentId) ? null : documentId.Trim(),
+                Query = normalizedQuery,
+                UseFts = useFts ? 1 : 0
+            }, cancellationToken: cancellationToken));
+
+        return rows.Select(static row => new SnippetSearchResult
+        {
+            Id = row.Id,
+            WorkspaceId = row.WorkspaceId,
+            DocumentId = row.DocumentId,
+            CompanyId = row.CompanyId,
+            CompanyName = row.CompanyName,
+            DocumentTitle = row.DocumentTitle,
+            Locator = row.Locator ?? string.Empty,
+            Text = row.Text,
+            CreatedAt = row.CreatedAt
+        }).ToList();
+    }
+
     private static Snippet Map(SnippetRow row) => new()
     {
         Id = row.Id,
@@ -135,6 +197,19 @@ public sealed class SqliteSnippetRepository(IAppSettingsService appSettingsServi
         public string? DocumentId { get; init; }
         public string? CompanyId { get; init; }
         public string? SourceId { get; init; }
+        public string? Locator { get; init; }
+        public string Text { get; init; } = string.Empty;
+        public string CreatedAt { get; init; } = string.Empty;
+    }
+
+    private sealed class SnippetSearchRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
+        public string DocumentId { get; init; } = string.Empty;
+        public string DocumentTitle { get; init; } = string.Empty;
+        public string? CompanyId { get; init; }
+        public string? CompanyName { get; init; }
         public string? Locator { get; init; }
         public string Text { get; init; } = string.Empty;
         public string CreatedAt { get; init; } = string.Empty;

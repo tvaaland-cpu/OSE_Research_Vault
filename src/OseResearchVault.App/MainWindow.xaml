@@ -230,10 +230,57 @@
                             <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
                                 <ListBox ItemsSource="{Binding RunArtifacts}" SelectedItem="{Binding SelectedRunArtifact}" DisplayMemberPath="Title" Margin="0,0,6,0"/>
-                                <StackPanel Grid.Column="1">
+                                <Grid Grid.Column="1">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
                                     <TextBox Text="{Binding SelectedRunArtifact.Content, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Height="180" TextWrapping="Wrap"/>
-                                    <Button Content="Save Artifact Output" Width="160" Margin="0,6,0,0" Command="{Binding SaveArtifactCommand}"/>
-                                </StackPanel>
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,6">
+                                        <Button Content="Save Artifact Output" Width="160" Command="{Binding SaveArtifactCommand}"/>
+                                        <Button Content="Link Snippet…" Width="120" Margin="8,0,0,0" Click="LinkArtifactSnippet_OnClick"/>
+                                    </StackPanel>
+                                    <GroupBox Grid.Row="2" Header="Evidence">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding ArtifactEvidenceStatusMessage}" Margin="0,0,0,6" Foreground="#FF4A5568"/>
+                                            <ListView Grid.Row="1" ItemsSource="{Binding ArtifactEvidenceLinks}">
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                                                            <Grid>
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto"/>
+                                                                    <RowDefinition Height="Auto"/>
+                                                                </Grid.RowDefinitions>
+                                                                <DockPanel LastChildFill="False">
+                                                                    <TextBlock Text="{Binding SnippetPreview}" TextWrapping="Wrap" Width="420"/>
+                                                                    <Button Content="Remove" Margin="8,0,0,0" Padding="8,2" Click="RemoveEvidenceLink_OnClick" Tag="{Binding EvidenceLinkId}"/>
+                                                                </DockPanel>
+                                                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+                                                                    <TextBlock Text="Locator: " FontWeight="SemiBold"/>
+                                                                    <TextBlock Text="{Binding Locator}" Margin="0,0,12,0"/>
+                                                                    <TextBlock Text="Source: " FontWeight="SemiBold"/>
+                                                                    <TextBlock Margin="0,0,12,0">
+                                                                        <Hyperlink Click="EvidenceDocumentLink_OnClick" Tag="{Binding DocumentId}">
+                                                                            <Run Text="{Binding DocumentTitle}"/>
+                                                                        </Hyperlink>
+                                                                    </TextBlock>
+                                                                    <TextBlock Text="Company: " FontWeight="SemiBold"/>
+                                                                    <TextBlock Text="{Binding CompanyName}"/>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Grid>
+                                    </GroupBox>
+                                </Grid>
                             </Grid>
                         </Grid>
                     </GroupBox>
