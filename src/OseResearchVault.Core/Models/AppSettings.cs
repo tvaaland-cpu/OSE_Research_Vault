@@ -13,6 +13,7 @@ public sealed class AppSettings
     public int MirrorFrequencyHours { get; set; } = 24;
     public string? MirrorLastRunAt { get; set; }
     public LlmGenerationSettings DefaultLlmSettings { get; set; } = new();
+    public bool FirstRunCompleted { get; set; }
 
     public string DatabaseFilePath => Path.Combine(DatabaseDirectory, "ose-research-vault.db");
 }

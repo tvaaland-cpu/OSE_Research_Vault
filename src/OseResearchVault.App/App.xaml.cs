@@ -33,7 +33,19 @@ public partial class App : Application
 
         var databaseInitializer = _serviceProvider.GetRequiredService<IDatabaseInitializer>();
         var workspaceService = _serviceProvider.GetRequiredService<IWorkspaceService>();
-        if (await workspaceService.GetCurrentAsync() is null)
+        var appSettingsService = _serviceProvider.GetRequiredService<IAppSettingsService>();
+
+        var settings = await appSettingsService.GetSettingsAsync();
+        if (!settings.FirstRunCompleted)
+        {
+            var firstRunWizard = _serviceProvider.GetRequiredService<FirstRunWizardDialog>();
+            if (firstRunWizard.ShowDialog() != true)
+            {
+                Shutdown();
+                return;
+            }
+        }
+        else if (await workspaceService.GetCurrentAsync() is null)
         {
             var workspaceDialog = _serviceProvider.GetRequiredService<SelectOrCreateWorkspaceDialog>();
             if (workspaceDialog.ShowDialog() != true)
@@ -43,7 +55,22 @@ public partial class App : Application
             }
         }
 
-        await databaseInitializer.InitializeAsync();
+        var hasPendingMigrations = await databaseInitializer.HasPendingMigrationsAsync();
+        UpgradeProgressWindow? upgradeWindow = null;
+        if (hasPendingMigrations)
+        {
+            upgradeWindow = _serviceProvider.GetRequiredService<UpgradeProgressWindow>();
+            upgradeWindow.Show();
+        }
+
+        try
+        {
+            await databaseInitializer.InitializeAsync();
+        }
+        finally
+        {
+            upgradeWindow?.Close();
+        }
 
         var automationScheduler = _serviceProvider.GetRequiredService<IAutomationScheduler>();
         await automationScheduler.StartAsync();
@@ -153,7 +180,9 @@ public partial class App : Application
 
         services.AddSingleton<MainViewModel>();
         services.AddTransient<SelectOrCreateWorkspaceDialog>();
+        services.AddTransient<FirstRunWizardDialog>();
         services.AddTransient<WorkspaceManagerDialog>();
+        services.AddTransient<UpgradeProgressWindow>();
         services.AddSingleton<MainWindow>();
     }
 

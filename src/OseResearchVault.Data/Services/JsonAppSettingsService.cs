@@ -25,6 +25,13 @@ public sealed class JsonAppSettingsService : IAppSettingsService
 
         EnsureWorkspaceSettings(settings);
         EnsureDirectories(settings);
+
+        if (!settings.FirstRunCompleted && settings.Workspaces.Count > 0)
+        {
+            settings.FirstRunCompleted = true;
+            await SaveSettingsAsync(settings, cancellationToken);
+        }
+
         return settings;
     }
 
@@ -47,7 +54,8 @@ public sealed class JsonAppSettingsService : IAppSettingsService
             VaultStorageDirectory = vaultDirectory,
             ImportInboxFolderPath = Path.Combine(AppPaths.DefaultRootDirectory, "import-inbox"),
             ImportInboxEnabled = false,
-            MirrorFrequencyHours = 24
+            MirrorFrequencyHours = 24,
+            FirstRunCompleted = false
         };
 
         EnsureWorkspaceSettings(settings);
