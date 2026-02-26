@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json;
+using OseResearchVault.App.Services;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 
@@ -13,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IUserDialogService _dialogService;
     private readonly IMetricService _metricService;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
@@ -64,6 +67,16 @@ public sealed class MainViewModel : ViewModelBase
     private string _evidenceCoverageLabel = "0 evidence links";
     private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private CompanyMetricListItemViewModel? _selectedHubMetric;
+    private string _selectedMetricNameFilter = "All";
+    private string _metricPeriodFilter = string.Empty;
+    private string _metricEditName = string.Empty;
+    private string _metricEditPeriod = string.Empty;
+    private string _metricEditValue = string.Empty;
+    private string _metricEditUnit = string.Empty;
+    private string _metricEditCurrency = string.Empty;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IUserDialogService dialogService)
 
     public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService)
     {
@@ -73,6 +86,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _dialogService = dialogService;
         _metricService = metricService;
 
         NavigationItems =
@@ -101,6 +115,8 @@ public sealed class MainViewModel : ViewModelBase
         HubNotes = [];
         HubEvents = [];
         HubMetrics = [];
+        AllHubMetrics = [];
+        MetricNameOptions = ["All"];
         HubAgentRuns = [];
         SearchResults = [];
         WorkspaceOptions = [];
@@ -127,6 +143,9 @@ public sealed class MainViewModel : ViewModelBase
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        OpenMetricEvidenceCommand = new RelayCommand(param => _ = OpenMetricEvidenceAsync(param as CompanyMetricListItemViewModel));
+        SaveMetricCommand = new RelayCommand(() => _ = SaveSelectedMetricAsync(), () => SelectedHubMetric is not null && !string.IsNullOrWhiteSpace(MetricEditName));
+        DeleteMetricCommand = new RelayCommand(() => _ = DeleteSelectedMetricAsync(), () => SelectedHubMetric is not null);
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -143,7 +162,9 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> HubDocuments { get; }
     public ObservableCollection<string> HubNotes { get; }
     public ObservableCollection<string> HubEvents { get; }
-    public ObservableCollection<string> HubMetrics { get; }
+    public ObservableCollection<CompanyMetricListItemViewModel> HubMetrics { get; }
+    public ObservableCollection<CompanyMetricListItemViewModel> AllHubMetrics { get; }
+    public ObservableCollection<string> MetricNameOptions { get; }
     public ObservableCollection<string> HubAgentRuns { get; }
     public ObservableCollection<SearchResultListItemViewModel> SearchResults { get; }
     public ObservableCollection<WorkspaceOptionViewModel> WorkspaceOptions { get; }
@@ -172,6 +193,9 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand OpenMetricEvidenceCommand { get; }
+    public RelayCommand SaveMetricCommand { get; }
+    public RelayCommand DeleteMetricCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -263,6 +287,55 @@ public sealed class MainViewModel : ViewModelBase
             }
         }
     }
+
+    public CompanyMetricListItemViewModel? SelectedHubMetric
+    {
+        get => _selectedHubMetric;
+        set
+        {
+            if (SetProperty(ref _selectedHubMetric, value))
+            {
+                SaveMetricCommand.RaiseCanExecuteChanged();
+                DeleteMetricCommand.RaiseCanExecuteChanged();
+
+                MetricEditName = value?.MetricName ?? string.Empty;
+                MetricEditPeriod = value?.Period ?? string.Empty;
+                MetricEditValue = value?.ValueDisplay ?? string.Empty;
+                MetricEditUnit = value?.Unit ?? string.Empty;
+                MetricEditCurrency = value?.Currency ?? string.Empty;
+            }
+        }
+    }
+
+    public string SelectedMetricNameFilter
+    {
+        get => _selectedMetricNameFilter;
+        set
+        {
+            if (SetProperty(ref _selectedMetricNameFilter, value))
+            {
+                ApplyMetricFilters();
+            }
+        }
+    }
+
+    public string MetricPeriodFilter
+    {
+        get => _metricPeriodFilter;
+        set
+        {
+            if (SetProperty(ref _metricPeriodFilter, value))
+            {
+                ApplyMetricFilters();
+            }
+        }
+    }
+
+    public string MetricEditName { get => _metricEditName; set { if (SetProperty(ref _metricEditName, value)) SaveMetricCommand.RaiseCanExecuteChanged(); } }
+    public string MetricEditPeriod { get => _metricEditPeriod; set => SetProperty(ref _metricEditPeriod, value); }
+    public string MetricEditValue { get => _metricEditValue; set => SetProperty(ref _metricEditValue, value); }
+    public string MetricEditUnit { get => _metricEditUnit; set => SetProperty(ref _metricEditUnit, value); }
+    public string MetricEditCurrency { get => _metricEditCurrency; set => SetProperty(ref _metricEditCurrency, value); }
 
     public string DocumentStatusMessage
     {
@@ -760,10 +833,15 @@ public sealed class MainViewModel : ViewModelBase
         HubNotes.Clear();
         HubEvents.Clear();
         HubMetrics.Clear();
+        AllHubMetrics.Clear();
+        MetricNameOptions.Clear();
+        MetricNameOptions.Add("All");
+        MetricPeriodFilter = string.Empty;
         HubAgentRuns.Clear();
 
         if (string.IsNullOrWhiteSpace(companyId))
         {
+            SelectedHubMetric = null;
             return;
         }
 
@@ -790,13 +868,143 @@ public sealed class MainViewModel : ViewModelBase
 
         foreach (var item in metrics)
         {
-            HubMetrics.Add(item);
+            AllHubMetrics.Add(new CompanyMetricListItemViewModel
+            {
+                Id = item.Id,
+                MetricName = item.MetricName,
+                Period = item.Period,
+                ValueDisplay = item.Value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                Unit = item.Unit ?? string.Empty,
+                Currency = item.Currency ?? string.Empty,
+                EvidenceDisplay = BuildEvidenceDisplay(item),
+                CreatedAt = FormatDate(item.CreatedAt),
+                DocumentId = item.DocumentId,
+                SnippetId = item.SnippetId,
+                Locator = item.Locator,
+                SourceTitle = item.SourceTitle,
+                SnippetText = item.SnippetText,
+                Value = item.Value
+            });
         }
+
+        foreach (var metricName in await _companyService.GetCompanyMetricNamesAsync(companyId))
+        {
+            MetricNameOptions.Add(metricName);
+        }
+
+        SelectedMetricNameFilter = MetricNameOptions.FirstOrDefault() ?? "All";
+        ApplyMetricFilters();
+        SelectedHubMetric = HubMetrics.FirstOrDefault();
 
         foreach (var item in runs)
         {
             HubAgentRuns.Add(item);
         }
+    }
+
+    private void ApplyMetricFilters()
+    {
+        var filtered = AllHubMetrics.Where(metric =>
+            (string.IsNullOrWhiteSpace(SelectedMetricNameFilter) || string.Equals(SelectedMetricNameFilter, "All", StringComparison.OrdinalIgnoreCase) || string.Equals(metric.MetricName, SelectedMetricNameFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrWhiteSpace(MetricPeriodFilter) || metric.Period.Contains(MetricPeriodFilter, StringComparison.OrdinalIgnoreCase)));
+
+        HubMetrics.Clear();
+        foreach (var metric in filtered)
+        {
+            HubMetrics.Add(metric);
+        }
+
+        if (SelectedHubMetric is not null && HubMetrics.All(m => m.Id != SelectedHubMetric.Id))
+        {
+            SelectedHubMetric = HubMetrics.FirstOrDefault();
+        }
+    }
+
+    private async Task SaveSelectedMetricAsync()
+    {
+        if (SelectedHubMetric is null)
+        {
+            return;
+        }
+
+        double? parsed = null;
+        if (!string.IsNullOrWhiteSpace(MetricEditValue))
+        {
+            if (!double.TryParse(MetricEditValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsedValue))
+            {
+                CompanyStatusMessage = "Metric value must be numeric.";
+                return;
+            }
+
+            parsed = parsedValue;
+        }
+
+        await _companyService.UpdateCompanyMetricAsync(SelectedHubMetric.Id, new CompanyMetricUpdateRequest
+        {
+            MetricName = MetricEditName,
+            Period = MetricEditPeriod,
+            Value = parsed,
+            Unit = MetricEditUnit,
+            Currency = MetricEditCurrency
+        });
+
+        CompanyStatusMessage = "Metric updated.";
+        await LoadCompanyHubAsync(SelectedHubCompany?.Id);
+    }
+
+    private async Task DeleteSelectedMetricAsync()
+    {
+        if (SelectedHubMetric is null)
+        {
+            return;
+        }
+
+        await _companyService.DeleteCompanyMetricAsync(SelectedHubMetric.Id);
+        CompanyStatusMessage = "Metric deleted.";
+        await LoadCompanyHubAsync(SelectedHubCompany?.Id);
+    }
+
+    private async Task OpenMetricEvidenceAsync(CompanyMetricListItemViewModel? metric)
+    {
+        if (metric is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(metric.DocumentId))
+        {
+            SelectedItem = NavigationItems.First(i => string.Equals(i.Title, "Documents", StringComparison.OrdinalIgnoreCase));
+            await LoadDocumentsAsync();
+            SelectedDocument = Documents.FirstOrDefault(d => d.Id == metric.DocumentId);
+            if (!string.IsNullOrWhiteSpace(metric.SnippetText))
+            {
+                DetailsTextPreview = metric.SnippetText;
+            }
+
+            DocumentStatusMessage = "Opened metric evidence in Documents (best-effort snippet highlight).";
+            return;
+        }
+
+        var sourceLine = string.IsNullOrWhiteSpace(metric.SourceTitle) ? "(unknown)" : metric.SourceTitle;
+        _dialogService.ShowInfo(
+            $"Snippet: {metric.SnippetText}{Environment.NewLine}{Environment.NewLine}Locator: {metric.Locator}{Environment.NewLine}Source: {sourceLine}",
+            "Metric Evidence Snippet");
+    }
+
+    private static string BuildEvidenceDisplay(CompanyMetricRecord item)
+    {
+        var locator = string.IsNullOrWhiteSpace(item.Locator) ? "(no locator)" : item.Locator;
+        if (!string.IsNullOrWhiteSpace(item.DocumentTitle))
+        {
+            return $"{item.DocumentTitle} — {locator}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.SourceTitle))
+        {
+            return $"{item.SourceTitle} — {locator}";
+        }
+
+        return locator;
     }
 
     private async Task LoadDocumentDetailsAsync(string? documentId)

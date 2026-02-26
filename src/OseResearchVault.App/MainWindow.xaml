@@ -417,7 +417,51 @@
                 <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}"/></TabItem>
                 <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}"/></TabItem>
                 <TabItem Header="Events"><ListBox ItemsSource="{Binding HubEvents}"/></TabItem>
-                <TabItem Header="Metrics"><ListBox ItemsSource="{Binding HubMetrics}"/></TabItem>
+                <TabItem Header="Metrics">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Metric" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ComboBox Width="220" ItemsSource="{Binding MetricNameOptions}" SelectedItem="{Binding SelectedMetricNameFilter}"/>
+                            <TextBlock Text="Period" VerticalAlignment="Center" Margin="16,0,8,0"/>
+                            <TextBox Width="220" Text="{Binding MetricPeriodFilter, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding HubMetrics}" SelectedItem="{Binding SelectedHubMetric}" AutoGenerateColumns="False" IsReadOnly="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Metric" Binding="{Binding MetricName}" Width="150"/>
+                                <DataGridTextColumn Header="Period" Binding="{Binding Period}" Width="120"/>
+                                <DataGridTextColumn Header="Value" Binding="{Binding ValueDisplay}" Width="90"/>
+                                <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="90"/>
+                                <DataGridTextColumn Header="Currency" Binding="{Binding Currency}" Width="90"/>
+                                <DataGridTemplateColumn Header="Evidence" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding EvidenceDisplay}" Command="{Binding DataContext.OpenMetricEvidenceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="4,2"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Created at" Binding="{Binding CreatedAt}" Width="130"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+                            <WrapPanel>
+                                <TextBox Width="160" Margin="0,0,6,0" ToolTip="Metric" Text="{Binding MetricEditName}"/>
+                                <TextBox Width="140" Margin="0,0,6,0" ToolTip="Period" Text="{Binding MetricEditPeriod}"/>
+                                <TextBox Width="90" Margin="0,0,6,0" ToolTip="Value" Text="{Binding MetricEditValue}"/>
+                                <TextBox Width="90" Margin="0,0,6,0" ToolTip="Unit" Text="{Binding MetricEditUnit}"/>
+                                <TextBox Width="90" Margin="0,0,6,0" ToolTip="Currency" Text="{Binding MetricEditCurrency}"/>
+                            </WrapPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Content="Edit metric" Command="{Binding SaveMetricCommand}"/>
+                                <Button Content="Delete metric" Margin="8,0,0,0" Command="{Binding DeleteMetricCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
                 <TabItem Header="Agent Runs"><ListBox ItemsSource="{Binding HubAgentRuns}"/></TabItem>
             </TabControl>
         </Grid>
