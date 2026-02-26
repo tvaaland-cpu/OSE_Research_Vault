@@ -8,7 +8,7 @@ using OseResearchVault.Core.Models;
 
 namespace OseResearchVault.App.ViewModels;
 
-public sealed class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase
 {
     private readonly IDocumentImportService _documentImportService;
     private readonly ICompanyService _companyService;

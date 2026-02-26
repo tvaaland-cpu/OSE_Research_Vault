@@ -1,0 +1,40 @@
+<Window x:Class="OseResearchVault.App.SelectOrCreateWorkspaceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Select or Create Workspace" Height="430" Width="640" WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="Select or Create Workspace" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,12"/>
+            <DataGrid x:Name="WorkspaceGrid" Height="200" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="180"/>
+                    <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="*"/>
+                    <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="170"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GroupBox Header="Create New Workspace" Margin="0,12,0,0" Padding="10">
+                <StackPanel>
+                    <TextBlock Text="Name"/>
+                    <TextBox x:Name="WorkspaceNameTextBox" Margin="0,4,0,8"/>
+                    <TextBlock Text="Folder"/>
+                    <DockPanel Margin="0,4,0,0">
+                        <TextBox x:Name="WorkspaceFolderTextBox" DockPanel.Dock="Left" Margin="0,0,8,0" MinWidth="440"/>
+                        <Button Content="Browse…" Width="90" Click="BrowseFolder_OnClick"/>
+                    </DockPanel>
+                    <Button Content="Create and Continue" Width="160" Margin="0,10,0,0" Click="CreateWorkspace_OnClick"/>
+                </StackPanel>
+            </GroupBox>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Use Selected" Width="120" Margin="0,0,8,0" Click="UseSelected_OnClick"/>
+            <Button Content="Cancel" Width="100" Click="Cancel_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

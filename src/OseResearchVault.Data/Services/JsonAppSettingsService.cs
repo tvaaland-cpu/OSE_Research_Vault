@@ -23,6 +23,7 @@ public sealed class JsonAppSettingsService : IAppSettingsService
         var settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, SerializerOptions, cancellationToken)
             ?? BuildDefaults();
 
+        EnsureWorkspaceSettings(settings);
         EnsureDirectories(settings);
         return settings;
     }
@@ -48,6 +49,8 @@ public sealed class JsonAppSettingsService : IAppSettingsService
             ImportInboxEnabled = false
         };
 
+        EnsureWorkspaceSettings(settings);
+
         EnsureDirectories(settings);
         return settings;
     }
@@ -61,6 +64,30 @@ public sealed class JsonAppSettingsService : IAppSettingsService
         if (!string.IsNullOrWhiteSpace(settings.ImportInboxFolderPath))
         {
             Directory.CreateDirectory(settings.ImportInboxFolderPath);
+        }
+    }
+
+    private static void EnsureWorkspaceSettings(AppSettings settings)
+    {
+        settings.Workspaces ??= [];
+
+        if (settings.Workspaces.Count == 0 && !string.IsNullOrWhiteSpace(settings.DatabaseDirectory))
+        {
+            var workspacePath = Directory.GetParent(settings.DatabaseDirectory)?.FullName ?? AppPaths.DefaultRootDirectory;
+            var workspace = new WorkspaceSetting
+            {
+                Id = settings.CurrentWorkspaceId ?? Guid.NewGuid().ToString(),
+                Name = "Default Workspace",
+                Path = workspacePath,
+                CreatedAt = DateTimeOffset.UtcNow.ToString("O")
+            };
+            settings.Workspaces.Add(workspace);
+            settings.CurrentWorkspaceId = workspace.Id;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.CurrentWorkspaceId))
+        {
+            settings.CurrentWorkspaceId = settings.Workspaces.FirstOrDefault()?.Id;
         }
     }
 }
