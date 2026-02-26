@@ -12,6 +12,7 @@ namespace OseResearchVault.App;
 
 public partial class App : Application
 {
+    public static IServiceProvider? Services { get; private set; }
     private ServiceProvider? _serviceProvider;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -21,6 +22,7 @@ public partial class App : Application
         var services = new ServiceCollection();
         ConfigureServices(services);
         _serviceProvider = services.BuildServiceProvider();
+        Services = _serviceProvider;
 
         var logger = _serviceProvider.GetRequiredService<ILogger<App>>();
         logger.LogInformation("Starting OSE Research Vault");
@@ -43,6 +45,7 @@ public partial class App : Application
             scheduler?.StopAsync().GetAwaiter().GetResult();
         }
 
+        Services = null;
         _serviceProvider?.Dispose();
         base.OnExit(e);
     }
@@ -96,6 +99,7 @@ public partial class App : Application
         services.AddSingleton<IRedactionService, RegexRedactionService>();
         services.AddSingleton<IExportService, SqliteExportService>();
         services.AddSingleton<IBackupService, SqliteBackupService>();
+        services.AddSingleton<IMemoPublishService, SqliteMemoPublishService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
