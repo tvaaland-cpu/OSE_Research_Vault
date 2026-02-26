@@ -15,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly INotificationService _notificationService;
     private readonly IAutomationService _automationService;
     private readonly IAskMyVaultService _askMyVaultService;
     private readonly IMetricService _metricService;
@@ -80,6 +81,12 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricCurrency = string.Empty;
     private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private NotificationListItemViewModel? _selectedNotification;
+    private string _toastMessage = string.Empty;
+    private bool _isToastVisible;
+    private CancellationTokenSource? _toastCts;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, INotificationService notificationService)
     private AutomationListItemViewModel? _selectedAutomation;
     private AutomationRunListItemViewModel? _selectedAutomationRun;
     private string _automationStatusMessage = "Create and schedule automations.";
@@ -109,6 +116,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _notificationService = notificationService;
         _automationService = automationService;
         _askMyVaultService = askMyVaultService;
         _metricService = metricService;
@@ -128,6 +136,7 @@ public sealed class MainViewModel : ViewModelBase
             new NavigationItem("Automations"),
             new NavigationItem("Ask My Vault"),
             new NavigationItem("Search"),
+            new NavigationItem("Inbox"),
             new NavigationItem("Settings")
         ];
 
@@ -156,6 +165,7 @@ public sealed class MainViewModel : ViewModelBase
         RunArtifacts = [];
         ArtifactEvidenceLinks = [];
         DocumentSnippets = [];
+        Notifications = [];
         Automations = [];
         AutomationRuns = [];
         SearchTypeOptions = ["All", "Notes", "Documents", "Snippets", "Artifacts"];
@@ -178,6 +188,8 @@ public sealed class MainViewModel : ViewModelBase
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        RefreshInboxCommand = new RelayCommand(() => _ = LoadNotificationsAsync());
+        MarkNotificationReadCommand = new RelayCommand(() => _ = MarkNotificationReadAsync(), () => SelectedNotification is not null && !SelectedNotification.IsRead);
         NewAutomationCommand = new RelayCommand(() => _ = NewAutomationAsync());
         EditAutomationCommand = new RelayCommand(() => _ = EditAutomationAsync(), () => SelectedAutomation is not null);
         DeleteAutomationCommand = new RelayCommand(() => _ = DeleteAutomationAsync(), () => SelectedAutomation is not null);
@@ -217,6 +229,7 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<ArtifactEvidenceLinkListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
+    public ObservableCollection<NotificationListItemViewModel> Notifications { get; }
     public ObservableCollection<AutomationListItemViewModel> Automations { get; }
     public ObservableCollection<AutomationRunListItemViewModel> AutomationRuns { get; }
     public IReadOnlyList<string> NoteTypes { get; }
@@ -239,6 +252,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand RefreshInboxCommand { get; }
+    public RelayCommand MarkNotificationReadCommand { get; }
     public RelayCommand NewAutomationCommand { get; }
     public RelayCommand EditAutomationCommand { get; }
     public RelayCommand DeleteAutomationCommand { get; }
@@ -262,6 +277,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsInboxSelected));
                 OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsAskMyVaultSelected));
             }
@@ -274,6 +290,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsInboxSelected => IsSelected("Inbox");
     public bool IsAutomationsSelected => IsSelected("Automations");
 
     public AutomationListItemViewModel? SelectedAutomation
@@ -645,6 +662,21 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     public CompanyOptionViewModel? SelectedRunCompany { get => _selectedRunCompany; set => SetProperty(ref _selectedRunCompany, value); }
+
+    public NotificationListItemViewModel? SelectedNotification
+    {
+        get => _selectedNotification;
+        set
+        {
+            if (SetProperty(ref _selectedNotification, value))
+            {
+                MarkNotificationReadCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string ToastMessage { get => _toastMessage; set => SetProperty(ref _toastMessage, value); }
+    public bool IsToastVisible { get => _isToastVisible; set => SetProperty(ref _isToastVisible, value); }
     public string AgentName { get => _agentName; set { if (SetProperty(ref _agentName, value)) { SaveAgentTemplateCommand.RaiseCanExecuteChanged(); } } }
     public string AgentGoal { get => _agentGoal; set => SetProperty(ref _agentGoal, value); }
     public string AgentInstructions { get => _agentInstructions; set => SetProperty(ref _agentInstructions, value); }
@@ -732,6 +764,7 @@ public sealed class MainViewModel : ViewModelBase
         await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        await LoadNotificationsAsync();
         await LoadAutomationsAsync();
     }
 
@@ -1644,6 +1677,27 @@ public sealed class MainViewModel : ViewModelBase
             SelectedDocumentIds = selectedDocIds
         });
 
+        await LoadAgentRunsAsync();
+        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+
+        var run = (await _agentService.GetRunsAsync(SelectedAgentTemplate.Id)).FirstOrDefault(x => x.Id == runId);
+        var wasSuccessful = string.Equals(run?.Status, "success", StringComparison.OrdinalIgnoreCase);
+        var title = wasSuccessful
+            ? $"Automation '{SelectedAgentTemplate.Name}' completed"
+            : $"Automation '{SelectedAgentTemplate.Name}' failed";
+        var body = wasSuccessful
+            ? "Output artifact captured."
+            : string.IsNullOrWhiteSpace(run?.Error)
+                ? "Automation failed with an unknown error."
+                : run.Error;
+
+        await _notificationService.AddNotification(wasSuccessful ? "info" : "error", title, body);
+        await LoadNotificationsAsync();
+        ShowToast(title);
+
+        AgentStatusMessage = wasSuccessful
+            ? "Run executed and output artifact captured."
+            : $"Run failed: {body}";
         AgentStatusMessage = "Answer generated and run history captured.";
         await LoadAgentRunsAsync();
         SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
@@ -1736,6 +1790,28 @@ public sealed class MainViewModel : ViewModelBase
         AgentStatusMessage = "Artifact output saved.";
     }
 
+    private async Task LoadNotificationsAsync(bool unreadOnly = false)
+    {
+        var workspaceId = SelectedSearchWorkspace?.Id ?? WorkspaceOptions.FirstOrDefault()?.Id ?? string.Empty;
+        var notifications = await _notificationService.ListNotifications(workspaceId, unreadOnly);
+        Notifications.Clear();
+        foreach (var notification in notifications)
+        {
+            Notifications.Add(new NotificationListItemViewModel
+            {
+                NotificationId = notification.NotificationId,
+                Level = notification.Level,
+                Title = notification.Title,
+                Body = notification.Body,
+                CreatedAt = FormatDate(notification.CreatedAt),
+                IsRead = notification.IsRead
+            });
+        }
+    }
+
+    private async Task MarkNotificationReadAsync()
+    {
+        if (SelectedNotification is null || SelectedNotification.IsRead)
     private async Task LoadAutomationsAsync()
     {
         var records = await _automationService.GetAutomationsAsync();
@@ -1936,6 +2012,32 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        await _notificationService.MarkRead(SelectedNotification.NotificationId);
+        SelectedNotification.IsRead = true;
+        MarkNotificationReadCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ShowToast(string message)
+    {
+        _toastCts?.Cancel();
+        _toastCts = new CancellationTokenSource();
+
+        ToastMessage = message;
+        IsToastVisible = true;
+
+        _ = HideToastAsync(_toastCts.Token);
+    }
+
+    private async Task HideToastAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            IsToastVisible = false;
+        }
+        catch (TaskCanceledException)
+        {
+        }
         await _automationService.DeleteAutomationAsync(SelectedAutomation.Id);
         AutomationStatusMessage = "Automation deleted.";
         await LoadAutomationsAsync();

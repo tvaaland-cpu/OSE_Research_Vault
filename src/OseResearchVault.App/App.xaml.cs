@@ -73,6 +73,7 @@ public partial class App : Application
         services.AddSingleton<IAskMyVaultService, AskMyVaultService>();
         services.AddSingleton<IRetrievalService, SqliteRetrievalService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<INotificationService, SqliteNotificationService>();
         services.AddSingleton<IAutomationService, SqliteAutomationService>();
         services.AddSingleton<IMetricService, SqliteMetricService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
