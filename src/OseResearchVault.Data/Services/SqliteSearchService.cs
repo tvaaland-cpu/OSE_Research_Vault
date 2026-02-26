@@ -1,11 +1,13 @@
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
+using System.Diagnostics;
 
 namespace OseResearchVault.Data.Services;
 
-public sealed class SqliteSearchService(IAppSettingsService appSettingsService) : ISearchService
+public sealed class SqliteSearchService(IAppSettingsService appSettingsService, ILogger<SqliteSearchService> logger) : ISearchService
 {
     public async Task<IReadOnlyList<SearchResultRecord>> SearchAsync(SearchQuery query, CancellationToken cancellationToken = default)
     {
@@ -18,6 +20,9 @@ public sealed class SqliteSearchService(IAppSettingsService appSettingsService) 
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
 
+        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var pageNumber = Math.Max(1, query.PageNumber);
+        var offset = (pageNumber - 1) * pageSize;
         var matchExpression = BuildMatchExpression(query.QueryText);
         var sql = @"
 SELECT * FROM (
@@ -107,7 +112,10 @@ SELECT * FROM (
 ORDER BY CASE x.ResultType WHEN 'note' THEN 0 WHEN 'document' THEN 1 WHEN 'snippet' THEN 2 ELSE 3 END,
          x.Rank ASC,
          x.OccurredAt DESC
-LIMIT 300";
+LIMIT @PageSize
+OFFSET @Offset";
+
+        var timer = Stopwatch.StartNew();
 
         var rows = await connection.QueryAsync<SearchResultRecord>(new CommandDefinition(
             sql,
@@ -118,9 +126,19 @@ LIMIT 300";
                 query.CompanyId,
                 Type = NormalizeType(query.Type),
                 DateFrom = query.DateFromIso,
-                DateTo = query.DateToIso
+                DateTo = query.DateToIso,
+                PageSize = pageSize,
+                Offset = offset
             },
             cancellationToken: cancellationToken));
+
+        timer.Stop();
+        logger.LogDebug(
+            "Search query completed in {ElapsedMs} ms (page {PageNumber}, size {PageSize}, query='{Query}')",
+            timer.ElapsedMilliseconds,
+            pageNumber,
+            pageSize,
+            query.QueryText);
 
         return rows.ToList();
     }

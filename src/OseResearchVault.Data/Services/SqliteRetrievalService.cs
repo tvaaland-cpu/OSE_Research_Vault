@@ -1,15 +1,19 @@
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
+using System.Diagnostics;
 
 namespace OseResearchVault.Data.Services;
 
-public sealed class SqliteRetrievalService(IAppSettingsService appSettingsService) : IRetrievalService
+public sealed class SqliteRetrievalService(IAppSettingsService appSettingsService, ILogger<SqliteRetrievalService> logger) : IRetrievalService
 {
     private const int ChunkSize = 1200;
     private const int ChunkOverlap = 100;
     private const int MinChunkLength = 800;
+    private const int MaxEffectiveTotalChars = 24000;
+    private const int MaxEffectiveChunks = 48;
 
     public async Task<ContextPack> RetrieveAsync(
         string workspaceId,
@@ -29,6 +33,10 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
             };
         }
 
+        var timer = Stopwatch.StartNew();
+        var effectiveMaxTotalChars = Math.Min(maxTotalChars, MaxEffectiveTotalChars);
+        var effectiveLimitPerType = Math.Max(1, Math.Min(limitPerType, MaxEffectiveChunks));
+
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
@@ -36,8 +44,8 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
         var matchExpression = BuildMatchExpression(query);
 
         var noteItems = BuildChunkedItems(
-            await QueryNotesAsync(connection, workspaceId, companyId, matchExpression, limitPerType, cancellationToken),
-            limitPerType,
+            await QueryNotesAsync(connection, workspaceId, companyId, matchExpression, effectiveLimitPerType, cancellationToken),
+            effectiveLimitPerType,
             "note",
             "NOTE",
             static row => row.Id,
@@ -46,8 +54,8 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
             static (_, chunkIndex) => $"sel={chunkIndex}");
 
         var documentItems = BuildChunkedItems(
-            await QueryDocumentsAsync(connection, workspaceId, companyId, matchExpression, limitPerType, cancellationToken),
-            limitPerType,
+            await QueryDocumentsAsync(connection, workspaceId, companyId, matchExpression, effectiveLimitPerType, cancellationToken),
+            effectiveLimitPerType,
             "doc",
             "DOC",
             static row => row.Id,
@@ -56,8 +64,8 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
             static (_, chunkIndex) => $"sel={chunkIndex}");
 
         var artifactItems = BuildChunkedItems(
-            await QueryArtifactsAsync(connection, workspaceId, matchExpression, limitPerType, cancellationToken),
-            limitPerType,
+            await QueryArtifactsAsync(connection, workspaceId, matchExpression, effectiveLimitPerType, cancellationToken),
+            effectiveLimitPerType,
             "artifact",
             "ART",
             static row => row.Id,
@@ -65,7 +73,7 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
             static row => row.Content,
             static (_, chunkIndex) => $"sel={chunkIndex}");
 
-        var snippetItems = (await QuerySnippetsAsync(connection, workspaceId, companyId, matchExpression, limitPerType, cancellationToken))
+        var snippetItems = (await QuerySnippetsAsync(connection, workspaceId, companyId, matchExpression, effectiveLimitPerType, cancellationToken))
             .OrderBy(r => r.Rank)
             .ThenBy(r => r.Id, StringComparer.Ordinal)
             .Select(r => new RankedContextItem(
@@ -79,6 +87,7 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
                     Locator = string.IsNullOrWhiteSpace(r.Locator) ? "snippet" : r.Locator,
                     CitationLabel = $"[SNIP:{r.Id}]"
                 }))
+            .Take(effectiveLimitPerType)
             .ToList();
 
         var merged = noteItems
@@ -101,9 +110,14 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
                 continue;
             }
 
-            if (runningChars + excerptLength > maxTotalChars)
+            if (capped.Count >= MaxEffectiveChunks)
             {
-                var remaining = maxTotalChars - runningChars;
+                break;
+            }
+
+            if (runningChars + excerptLength > effectiveMaxTotalChars)
+            {
+                var remaining = effectiveMaxTotalChars - runningChars;
                 if (remaining <= 0)
                 {
                     break;
@@ -124,6 +138,13 @@ public sealed class SqliteRetrievalService(IAppSettingsService appSettingsServic
             capped.Add(entry.Item);
             runningChars += excerptLength;
         }
+
+        timer.Stop();
+        logger.LogDebug(
+            "Retrieval pipeline completed in {ElapsedMs} ms with {ItemCount} item(s), {CharCount} chars",
+            timer.ElapsedMilliseconds,
+            capped.Count,
+            runningChars);
 
         return new ContextPack
         {

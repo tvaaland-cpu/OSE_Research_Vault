@@ -48,7 +48,7 @@ public sealed class RetrievalRegressionTests
             await connection.ExecuteAsync("INSERT INTO document_text_fts(id, title, content) VALUES (@Id, @Title, @Content)",
                 new { Id = docId, Title = "Earnings transcript", Content = "margin trend discussed in prepared remarks" });
 
-            var retrievalService = new SqliteRetrievalService(settingsService);
+            var retrievalService = new SqliteRetrievalService(settingsService, NullLogger<SqliteRetrievalService>.Instance);
             var context = await retrievalService.RetrieveAsync(workspaceId, "margin trend", companyId, limitPerType: 1, maxTotalChars: 4000);
 
             var topCitations = context.Items.Select(x => x.CitationLabel).ToList();

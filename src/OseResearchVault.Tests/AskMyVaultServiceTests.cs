@@ -31,7 +31,7 @@ public sealed class AskMyVaultServiceTests
             ]
         };
 
-        var service = new AskMyVaultService(fakeSearch);
+        var service = new AskMyVaultService(fakeSearch, Microsoft.Extensions.Logging.Abstractions.NullLogger<AskMyVaultService>.Instance);
         var result = await service.BuildPreviewAsync(new AskMyVaultPreviewRequest
         {
             Query = "What is debt maturity risk?",

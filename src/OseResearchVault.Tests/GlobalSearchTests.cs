@@ -24,7 +24,7 @@ public sealed class GlobalSearchTests
             var ftsSyncService = new SqliteFtsSyncService(settingsService);
             var noteService = new SqliteNoteService(settingsService, ftsSyncService);
             var documentService = new SqliteDocumentImportService(settingsService, ftsSyncService, NullLogger<SqliteDocumentImportService>.Instance);
-            var searchService = new SqliteSearchService(settingsService);
+            var searchService = new SqliteSearchService(settingsService, NullLogger<SqliteSearchService>.Instance);
 
             var settings = await settingsService.GetSettingsAsync();
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
@@ -73,6 +73,56 @@ public sealed class GlobalSearchTests
 
             Assert.NotEmpty(filtered);
             Assert.All(filtered, r => Assert.Equal(companyA, r.CompanyId));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task SearchAsync_Paging_ReturnsStableOrderedSlices()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var settings = await settingsService.GetSettingsAsync();
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await connection.OpenAsync();
+
+            var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
+            var now = DateTime.UtcNow.ToString("O");
+
+            for (var i = 0; i < 12; i++)
+            {
+                var noteId = Guid.NewGuid().ToString();
+                var content = $"tier-1 OEM signal {i}";
+                await connection.ExecuteAsync("INSERT INTO note(id, workspace_id, title, content, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Title, @Content, @Now, @Now)",
+                    new { Id = noteId, WorkspaceId = workspaceId, Title = $"Note {i:00}", Content = content, Now = now });
+                await connection.ExecuteAsync("INSERT INTO note_fts(id, title, body) VALUES (@Id, @Title, @Body)",
+                    new { Id = noteId, Title = $"Note {i:00}", Body = content });
+            }
+
+            var searchService = new SqliteSearchService(settingsService, NullLogger<SqliteSearchService>.Instance);
+            var firstPage = await searchService.SearchAsync(new SearchQuery { QueryText = "tier-1 OEM", Type = "Notes", PageSize = 5, PageNumber = 1 });
+            var secondPage = await searchService.SearchAsync(new SearchQuery { QueryText = "tier-1 OEM", Type = "Notes", PageSize = 5, PageNumber = 2 });
+            var combined = await searchService.SearchAsync(new SearchQuery { QueryText = "tier-1 OEM", Type = "Notes", PageSize = 10, PageNumber = 1 });
+
+            Assert.Equal(5, firstPage.Count);
+            Assert.Equal(5, secondPage.Count);
+
+            var stitched = firstPage.Concat(secondPage).Select(r => r.EntityId).ToArray();
+            var topTen = combined.Select(r => r.EntityId).ToArray();
+            Assert.Equal(topTen, stitched);
         }
         finally
         {

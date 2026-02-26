@@ -8,6 +8,8 @@ public sealed class SearchQuery
     public string? Type { get; init; }
     public string? DateFromIso { get; init; }
     public string? DateToIso { get; init; }
+    public int PageNumber { get; init; } = 1;
+    public int PageSize { get; init; } = 50;
 }
 
 public sealed class SearchResultRecord

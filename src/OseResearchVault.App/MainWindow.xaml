@@ -162,7 +162,8 @@
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <Border Grid.Column="0" AllowDrop="True" Drop="DocumentDropArea_OnDrop" DragOver="DocumentDropArea_OnDragOver">
-                    <DataGrid ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid ItemsSource="{Binding Documents}" SelectedItem="{Binding SelectedDocument}" AutoGenerateColumns="False" IsReadOnly="True"
+                              EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.IsVirtualizing="True" ScrollViewer.CanContentScroll="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*" />
                             <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="*" />
@@ -212,7 +213,8 @@
             </StackPanel>
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <DataGrid Grid.Column="0" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}" AutoGenerateColumns="False" IsReadOnly="True">
+                <DataGrid Grid.Column="0" ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}" AutoGenerateColumns="False" IsReadOnly="True"
+                          EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.IsVirtualizing="True" ScrollViewer.CanContentScroll="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="2*"/>
                         <DataGridTextColumn Header="Type" Binding="{Binding NoteType}" Width="*"/>
@@ -273,7 +275,8 @@
                         </Grid>
                     </GroupBox>
                     <GroupBox Grid.Row="1" Header="Run History">
-                        <DataGrid ItemsSource="{Binding AgentRuns}" SelectedItem="{Binding SelectedAgentRun}" AutoGenerateColumns="False" IsReadOnly="True">
+                        <DataGrid ItemsSource="{Binding AgentRuns}" SelectedItem="{Binding SelectedAgentRun}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.IsVirtualizing="True" ScrollViewer.CanContentScroll="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Agent" Binding="{Binding AgentName}" Width="*"/>
                                 <DataGridTextColumn Header="Company" Binding="{Binding CompanyName}" Width="*"/>
@@ -578,7 +581,8 @@
                     </CollectionViewSource>
                 </Grid.Resources>
                 <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <ListView ItemsSource="{Binding Source={StaticResource GroupedSearchResults}}" SelectedItem="{Binding SelectedSearchResult}">
+                <ListView ItemsSource="{Binding Source={StaticResource GroupedSearchResults}}" SelectedItem="{Binding SelectedSearchResult}"
+                          VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True">
                     <ListView.GroupStyle>
                         <GroupStyle>
                             <GroupStyle.HeaderTemplate>
@@ -601,7 +605,12 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <Button Grid.Row="1" Content="Open Selected" HorizontalAlignment="Left" Margin="0,8,0,0" Command="{Binding OpenSearchResultCommand}"/>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="Open Selected" HorizontalAlignment="Left" Command="{Binding OpenSearchResultCommand}"/>
+                    <Button Content="Prev" Margin="12,0,0,0" Command="{Binding PreviousSearchPageCommand}"/>
+                    <Button Content="Next" Margin="8,0,0,0" Command="{Binding NextSearchPageCommand}"/>
+                    <TextBlock Text="{Binding SearchPageNumber, StringFormat='Page {0}'}" Margin="12,4,0,0"/>
+                </StackPanel>
             </Grid>
         </Grid>
 
@@ -754,8 +763,8 @@
                         <TextBlock Text="{Binding LatestCloseDate}" Foreground="#FF4A5568" Margin="0,2,0,0"/>
                     </StackPanel>
                 </TabItem>
-                <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}"/></TabItem>
-                <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}"/></TabItem>
+                <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True"/></TabItem>
+                <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True"/></TabItem>
                 <TabItem Header="Events"><ListBox ItemsSource="{Binding HubEvents}"/></TabItem>
                 <TabItem Header="Metrics">
                     <Grid Margin="8">
@@ -881,7 +890,7 @@
                         </StackPanel>
                     </Grid>
                 </TabItem>
-                <TabItem Header="Agent Runs"><ListBox ItemsSource="{Binding HubAgentRuns}"/></TabItem>
+                <TabItem Header="Agent Runs"><ListBox ItemsSource="{Binding HubAgentRuns}" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True"/></TabItem>
             </TabControl>
         </Grid>
 
