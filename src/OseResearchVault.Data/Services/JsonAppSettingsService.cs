@@ -43,7 +43,9 @@ public sealed class JsonAppSettingsService : IAppSettingsService
         var settings = new AppSettings
         {
             DatabaseDirectory = databaseDirectory,
-            VaultStorageDirectory = vaultDirectory
+            VaultStorageDirectory = vaultDirectory,
+            ImportInboxFolderPath = Path.Combine(AppPaths.DefaultRootDirectory, "import-inbox"),
+            ImportInboxEnabled = false
         };
 
         EnsureDirectories(settings);
@@ -55,5 +57,10 @@ public sealed class JsonAppSettingsService : IAppSettingsService
         Directory.CreateDirectory(AppPaths.DefaultRootDirectory);
         Directory.CreateDirectory(settings.DatabaseDirectory);
         Directory.CreateDirectory(settings.VaultStorageDirectory);
+
+        if (!string.IsNullOrWhiteSpace(settings.ImportInboxFolderPath))
+        {
+            Directory.CreateDirectory(settings.ImportInboxFolderPath);
+        }
     }
 }

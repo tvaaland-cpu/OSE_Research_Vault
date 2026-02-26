@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Windows;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 
@@ -13,6 +14,8 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IAppSettingsService _appSettingsService;
+    private readonly IImportInboxWatcher _importInboxWatcher;
     private NavigationItem _selectedItem;
     private DocumentListItemViewModel? _selectedDocument;
     private CompanyListItemViewModel? _selectedCompany;
@@ -61,8 +64,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private string _importInboxFolderPath = string.Empty;
+    private bool _importInboxEnabled;
 
-    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService)
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAppSettingsService appSettingsService, IImportInboxWatcher importInboxWatcher)
     {
         _documentImportService = documentImportService;
         _companyService = companyService;
@@ -70,6 +75,8 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _appSettingsService = appSettingsService;
+        _importInboxWatcher = importInboxWatcher;
 
         NavigationItems =
         [
@@ -122,6 +129,9 @@ public sealed class MainViewModel : ViewModelBase
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        SaveImportInboxSettingsCommand = new RelayCommand(() => _ = SaveImportInboxSettingsAsync());
+
+        _importInboxWatcher.FileImported += OnImportInboxFileImported;
 
         _selectedItem = NavigationItems[1];
         _ = InitializeAsync();
@@ -165,6 +175,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand SaveImportInboxSettingsCommand { get; }
 
     public NavigationItem SelectedItem
     {
@@ -179,6 +190,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsSettingsSelected));
             }
         }
     }
@@ -189,6 +201,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsSettingsSelected => IsSelected("Settings");
 
     public DocumentListItemViewModel? SelectedDocument
     {
@@ -425,6 +438,8 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentEvidencePolicy { get => _agentEvidencePolicy; set => SetProperty(ref _agentEvidencePolicy, value); }
     public string AgentQuery { get => _agentQuery; set => SetProperty(ref _agentQuery, value); }
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
+    public string ImportInboxFolderPath { get => _importInboxFolderPath; set => SetProperty(ref _importInboxFolderPath, value); }
+    public bool ImportInboxEnabled { get => _importInboxEnabled; set => SetProperty(ref _importInboxEnabled, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
     public bool CanCreateSnippet => SelectedDocument is not null;
@@ -481,6 +496,38 @@ public sealed class MainViewModel : ViewModelBase
         await LoadSearchFiltersAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        await LoadImportInboxSettingsAsync();
+        await _importInboxWatcher.ReloadAsync();
+    }
+
+
+    private async Task LoadImportInboxSettingsAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        ImportInboxFolderPath = settings.ImportInboxFolderPath;
+        ImportInboxEnabled = settings.ImportInboxEnabled;
+    }
+
+    private async Task SaveImportInboxSettingsAsync()
+    {
+        var settings = await _appSettingsService.GetSettingsAsync();
+        settings.ImportInboxFolderPath = ImportInboxFolderPath.Trim();
+        settings.ImportInboxEnabled = ImportInboxEnabled;
+        await _appSettingsService.SaveSettingsAsync(settings);
+        await _importInboxWatcher.ReloadAsync();
+        DocumentStatusMessage = "Import Inbox settings saved.";
+    }
+
+    private void OnImportInboxFileImported(object? sender, ImportInboxEvent e)
+    {
+        _ = Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            DocumentStatusMessage = e.Succeeded
+                ? $"Imported {e.FileName}"
+                : $"Import failed for {e.FileName}: {e.ErrorMessage}";
+
+            await LoadDocumentsAsync();
+        });
     }
 
     private async Task SaveSelectedDocumentCompanyAsync()
