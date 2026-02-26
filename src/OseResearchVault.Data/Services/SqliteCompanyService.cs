@@ -189,7 +189,15 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
         var rows = await connection.QueryAsync<string>(new CommandDefinition(
-            "SELECT metric_key || ': ' || COALESCE(CAST(metric_value AS TEXT), 'n/a') || ' ' || COALESCE(unit, '') FROM metric WHERE company_id = @CompanyId ORDER BY recorded_at DESC",
+            @"SELECT metric_key
+                     || CASE WHEN COALESCE(period_label, '') = '' THEN '' ELSE ' (' || period_label || ')' END
+                     || ': '
+                     || COALESCE(CAST(metric_value AS TEXT), 'n/a')
+                     || CASE WHEN COALESCE(unit, '') = '' THEN '' ELSE ' ' || unit END
+                     || CASE WHEN COALESCE(currency, '') = '' THEN '' ELSE ' [' || currency || ']' END
+                FROM metric
+               WHERE company_id = @CompanyId
+            ORDER BY recorded_at DESC",
             new { CompanyId = companyId }, cancellationToken: cancellationToken));
         return rows.ToList();
     }

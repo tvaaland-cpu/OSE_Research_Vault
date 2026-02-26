@@ -113,6 +113,7 @@
                                         <TextBlock Text="{Binding Locator}" FontWeight="SemiBold"/>
                                         <TextBlock Text="{Binding CreatedAt}" FontSize="11" Foreground="#FF4A5568"/>
                                         <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                        <Button Content="Create Metric..." Width="130" Margin="0,6,0,0" Click="CreateMetricFromSnippet_OnClick"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

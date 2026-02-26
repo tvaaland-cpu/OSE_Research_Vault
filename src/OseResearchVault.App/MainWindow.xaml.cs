@@ -103,4 +103,39 @@ public partial class MainWindow : Window
         await _viewModel.CreateSnippetForSelectedDocumentAsync(dialog.Locator, dialog.SnippetTextValue, dialog.CompanyId);
     }
 
+
+    private async void CreateMetricFromSnippet_OnClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not DocumentSnippetListItemViewModel snippet)
+        {
+            return;
+        }
+
+        var companies = _viewModel.CompanyOptions.ToList();
+        var currency = _viewModel.Companies.FirstOrDefault(c => c.Id == snippet.CompanyId)?.Currency;
+        var dialog = new CreateMetricDialog(
+            companies,
+            snippet.CompanyId,
+            snippet.DocumentTitle,
+            snippet.Locator,
+            snippet.Text,
+            currency)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await _viewModel.CreateMetricFromSnippetAsync(
+            snippet.Id,
+            dialog.CompanyId ?? string.Empty,
+            dialog.MetricName,
+            dialog.Period,
+            dialog.Value,
+            dialog.Unit,
+            dialog.Currency);
+    }
 }
