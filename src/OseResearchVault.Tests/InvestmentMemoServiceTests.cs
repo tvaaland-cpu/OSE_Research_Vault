@@ -43,6 +43,12 @@ public sealed class InvestmentMemoServiceTests
         public Task<IReadOnlyList<AgentTemplateRecord>> GetAgentsAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<AgentRunRecord>> GetRunsAsync(string? agentId = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<AgentToolCallRecord>> GetToolCallsAsync(string runId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<ModelProfileRecord>> GetModelProfilesAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<string> CreateModelProfileAsync(ModelProfileUpsertRequest request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task UpdateModelProfileAsync(string modelProfileId, ModelProfileUpsertRequest request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task DeleteModelProfileAsync(string modelProfileId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task SetDefaultModelProfileAsync(string modelProfileId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<RunContextRecord?> GetRunContextAsync(string runId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task UpdateAgentAsync(string agentId, AgentTemplateUpsertRequest request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task UpdateArtifactContentAsync(string artifactId, string content, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }

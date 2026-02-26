@@ -158,9 +158,46 @@ public partial class MainWindow : Window
             snippet.Locator,
             snippet.Text,
             currency)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await _viewModel.CreateMetricFromSnippetAsync(
+            snippet.Id,
+            dialog.CompanyId ?? string.Empty,
+            dialog.MetricName,
+            dialog.Period,
+            dialog.Value,
+            dialog.Unit,
+            dialog.Currency);
+    }
+
     private void CopyCitation_OnClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement element || element.Tag is not string citation || string.IsNullOrWhiteSpace(citation))
+        {
+            return;
+        }
+
+        Clipboard.SetText(citation);
+        _viewModel.AgentStatusMessage = "Citation copied to clipboard.";
+    }
+
+    private void CopyPrompt_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_viewModel.RunPromptText))
+        {
+            return;
+        }
+
+        Clipboard.SetText(_viewModel.RunPromptText);
+        _viewModel.AgentStatusMessage = "Prompt copied to clipboard.";
+    }
 
     private async void CreateSnippetAndLink_OnClick(object sender, RoutedEventArgs e)
     {
@@ -191,6 +228,18 @@ public partial class MainWindow : Window
         };
 
         if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await _viewModel.CreateSnippetAndLinkToArtifactAsync(
+            _viewModel.SelectedRunArtifact.Id,
+            dialog.SelectedDocumentId,
+            dialog.Locator,
+            dialog.Snippet,
+            dialog.SelectedCompanyId);
+    }
+
     private async void LinkArtifactSnippet_OnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedRunArtifact is null)
@@ -226,15 +275,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        await _viewModel.CreateMetricFromSnippetAsync(
-            snippet.Id,
-            dialog.CompanyId ?? string.Empty,
-            dialog.MetricName,
-            dialog.Period,
-            dialog.Value,
-            dialog.Unit,
-            dialog.Currency);
-    }
         await _viewModel.RemoveEvidenceLinkAsync(evidenceLinkId);
     }
 
@@ -245,18 +285,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        Clipboard.SetText(citation);
-        _viewModel.AgentStatusMessage = "Citation copied to clipboard.";
-        await _viewModel.CreateSnippetAndLinkToArtifactAsync(
-            _viewModel.SelectedRunArtifact.Id,
-            dialog.SelectedDocumentId,
-            dialog.Locator,
-            dialog.Snippet,
-            dialog.SelectedCompanyId);
         _viewModel.OpenDocumentDetails(documentId);
     }
-
-
 
 
     private async void GenerateWeeklyReview_OnClick(object sender, RoutedEventArgs e)
