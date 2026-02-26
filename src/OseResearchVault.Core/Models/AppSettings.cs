@@ -8,6 +8,10 @@ public sealed class AppSettings
     public string VaultStorageDirectory { get; set; } = string.Empty;
     public string ImportInboxFolderPath { get; set; } = string.Empty;
     public bool ImportInboxEnabled { get; set; }
+    public bool MirrorEnabled { get; set; }
+    public string MirrorFolderPath { get; set; } = string.Empty;
+    public int MirrorFrequencyHours { get; set; } = 24;
+    public string? MirrorLastRunAt { get; set; }
     public LlmGenerationSettings DefaultLlmSettings { get; set; } = new();
 
     public string DatabaseFilePath => Path.Combine(DatabaseDirectory, "ose-research-vault.db");

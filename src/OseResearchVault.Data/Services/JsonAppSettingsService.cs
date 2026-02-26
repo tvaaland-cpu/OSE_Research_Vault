@@ -46,7 +46,8 @@ public sealed class JsonAppSettingsService : IAppSettingsService
             DatabaseDirectory = databaseDirectory,
             VaultStorageDirectory = vaultDirectory,
             ImportInboxFolderPath = Path.Combine(AppPaths.DefaultRootDirectory, "import-inbox"),
-            ImportInboxEnabled = false
+            ImportInboxEnabled = false,
+            MirrorFrequencyHours = 24
         };
 
         EnsureWorkspaceSettings(settings);
@@ -64,6 +65,16 @@ public sealed class JsonAppSettingsService : IAppSettingsService
         if (!string.IsNullOrWhiteSpace(settings.ImportInboxFolderPath))
         {
             Directory.CreateDirectory(settings.ImportInboxFolderPath);
+        }
+
+        if (settings.MirrorFrequencyHours <= 0)
+        {
+            settings.MirrorFrequencyHours = 24;
+        }
+
+        if (settings.MirrorEnabled && !string.IsNullOrWhiteSpace(settings.MirrorFolderPath))
+        {
+            Directory.CreateDirectory(settings.MirrorFolderPath);
         }
     }
 

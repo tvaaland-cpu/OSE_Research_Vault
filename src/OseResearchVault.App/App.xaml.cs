@@ -44,6 +44,9 @@ public partial class App : Application
         var automationScheduler = _serviceProvider.GetRequiredService<IAutomationScheduler>();
         await automationScheduler.StartAsync();
 
+        var mirrorBackupScheduler = _serviceProvider.GetRequiredService<IMirrorBackupScheduler>();
+        await mirrorBackupScheduler.StartAsync();
+
         var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         mainWindow.Show();
     }
@@ -54,6 +57,9 @@ public partial class App : Application
         {
             var scheduler = _serviceProvider.GetService<IAutomationScheduler>();
             scheduler?.StopAsync().GetAwaiter().GetResult();
+
+            var mirrorScheduler = _serviceProvider.GetService<IMirrorBackupScheduler>();
+            mirrorScheduler?.StopAsync().GetAwaiter().GetResult();
         }
 
         Services = null;
@@ -132,6 +138,7 @@ public partial class App : Application
         services.AddSingleton<ILLMProviderFactory, LlmProviderFactory>();
         services.AddSingleton<IAutomationExecutor, AutomationExecutor>();
         services.AddSingleton<IAutomationScheduler, AutomationScheduler>();
+        services.AddSingleton<IMirrorBackupScheduler, MirrorBackupScheduler>();
         services.AddSingleton<IPromptBuilder, AskVaultPromptBuilder>();
         services.AddSingleton<IInvestmentMemoService, InvestmentMemoService>();
         services.AddSingleton<IReviewService, ReviewService>();
