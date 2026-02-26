@@ -56,6 +56,67 @@ public sealed class WorkspaceService(
         return ToSummary(workspace);
     }
 
+    public async Task<WorkspaceSummary> CloneWorkspaceAsync(string sourceWorkspaceId, string destinationFolder, string newName, CancellationToken cancellationToken = default)
+    {
+        var trimmedName = newName.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedName))
+        {
+            throw new ArgumentException("Workspace name is required.", nameof(newName));
+        }
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var sourceWorkspace = settings.Workspaces.FirstOrDefault(w => w.Id == sourceWorkspaceId);
+        if (sourceWorkspace is null)
+        {
+            throw new InvalidOperationException("Source workspace was not found.");
+        }
+
+        var destinationPath = Path.GetFullPath(destinationFolder.Trim());
+        if (string.Equals(sourceWorkspace.Path, destinationPath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Destination folder must be different from the source workspace folder.");
+        }
+        if (Directory.Exists(destinationPath) && Directory.EnumerateFileSystemEntries(destinationPath).Any())
+        {
+            throw new InvalidOperationException("Destination folder must be empty.");
+        }
+
+        Directory.CreateDirectory(destinationPath);
+        var destinationDataDirectory = Path.Combine(destinationPath, "data");
+        var destinationVaultDirectory = Path.Combine(destinationPath, "vault");
+        Directory.CreateDirectory(destinationDataDirectory);
+        Directory.CreateDirectory(destinationVaultDirectory);
+
+        var sourceDatabasePath = Path.Combine(sourceWorkspace.Path, "data", "ose-research-vault.db");
+        var destinationDatabasePath = Path.Combine(destinationDataDirectory, "ose-research-vault.db");
+        await CloneDatabaseAsync(sourceDatabasePath, destinationDatabasePath, cancellationToken);
+
+        var sourceVaultDirectory = Path.Combine(sourceWorkspace.Path, "vault");
+        CopyDirectory(sourceVaultDirectory, destinationVaultDirectory);
+
+        var workspace = new WorkspaceSetting
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = trimmedName,
+            Path = destinationPath,
+            CreatedAt = DateTimeOffset.UtcNow.ToString("O")
+        };
+
+        settings.Workspaces.RemoveAll(w => string.Equals(w.Path, destinationPath, StringComparison.OrdinalIgnoreCase));
+        settings.Workspaces.Add(workspace);
+        settings.CurrentWorkspaceId = workspace.Id;
+        settings.DatabaseDirectory = destinationDataDirectory;
+        settings.VaultStorageDirectory = destinationVaultDirectory;
+
+        await EnsureWorkspaceRowAsync(destinationDatabasePath, workspace, cancellationToken);
+
+        await automationScheduler.StopAsync(cancellationToken);
+        await appSettingsService.SaveSettingsAsync(settings, cancellationToken);
+        await automationScheduler.StartAsync(cancellationToken);
+
+        return ToSummary(workspace);
+    }
+
     public async Task<bool> SwitchAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -119,5 +180,60 @@ public sealed class WorkspaceService(
             "INSERT OR IGNORE INTO workspace (id, name, description, created_at, updated_at) VALUES (@Id, @Name, @Path, @Now, @Now)",
             new { workspace.Id, workspace.Name, Path = workspace.Path, Now = DateTimeOffset.UtcNow.ToString("O") },
             cancellationToken: cancellationToken));
+    }
+
+    private static async Task CloneDatabaseAsync(string sourceDatabasePath, string destinationDatabasePath, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(sourceDatabasePath))
+        {
+            throw new FileNotFoundException("Could not find source workspace database.", sourceDatabasePath);
+        }
+
+        if (File.Exists(destinationDatabasePath))
+        {
+            File.Delete(destinationDatabasePath);
+        }
+
+        var sourceConnectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = sourceDatabasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            ForeignKeys = true
+        }.ToString();
+
+        var destinationConnectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = destinationDatabasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            ForeignKeys = true
+        }.ToString();
+
+        await using var sourceConnection = new SqliteConnection(sourceConnectionString);
+        await sourceConnection.OpenAsync(cancellationToken);
+        await using var destinationConnection = new SqliteConnection(destinationConnectionString);
+        await destinationConnection.OpenAsync(cancellationToken);
+        sourceConnection.BackupDatabase(destinationConnection);
+    }
+
+    private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+    {
+        if (!Directory.Exists(sourceDirectory))
+        {
+            return;
+        }
+
+        foreach (var directory in Directory.GetDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceDirectory, directory);
+            Directory.CreateDirectory(Path.Combine(destinationDirectory, relativePath));
+        }
+
+        foreach (var file in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceDirectory, file);
+            var destinationPath = Path.Combine(destinationDirectory, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            File.Copy(file, destinationPath, overwrite: true);
+        }
     }
 }
