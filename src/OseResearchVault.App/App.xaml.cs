@@ -2,6 +2,7 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.App.Logging;
+using OseResearchVault.App.Services;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Data.Repositories;
@@ -51,13 +52,18 @@ public partial class App : Application
         services.AddSingleton<IHealthRepository, HealthRepository>();
         services.AddSingleton<ISnippetRepository, SqliteSnippetRepository>();
         services.AddSingleton<IEvidenceLinkRepository, SqliteEvidenceLinkRepository>();
+        services.AddSingleton<IMetricRepository, SqliteMetricRepository>();
         services.AddSingleton<IEvidenceService, EvidenceService>();
+        services.AddSingleton<IMetricService, MetricService>();
         services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
         services.AddSingleton<IDocumentImportService, SqliteDocumentImportService>();
         services.AddSingleton<ICompanyService, SqliteCompanyService>();
         services.AddSingleton<INoteService, SqliteNoteService>();
         services.AddSingleton<ISearchService, SqliteSearchService>();
+        services.AddSingleton<IRetrievalService, SqliteRetrievalService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
+        services.AddSingleton<IMetricService, SqliteMetricService>();
+        services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
 #if OPENAI_PROVIDER
@@ -74,6 +80,7 @@ public partial class App : Application
 #endif
         services.AddSingleton<ILLMProviderFactory, LlmProviderFactory>();
         services.AddSingleton<IPromptBuilder, AskVaultPromptBuilder>();
+        services.AddSingleton<IUserDialogService, MessageBoxDialogService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
