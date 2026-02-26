@@ -1,0 +1,44 @@
+<Window x:Class="OseResearchVault.App.LinkSnippetDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Link Snippet"
+        WindowStartupLocation="CenterOwner"
+        MinWidth="760"
+        MinHeight="520">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Filter snippets" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="CompanyCombo" Grid.Column="0" Margin="0,0,8,0" DisplayMemberPath="DisplayName" SelectedValuePath="Id"/>
+            <ComboBox x:Name="DocumentCombo" Grid.Column="1" Margin="0,0,8,0" DisplayMemberPath="Title" SelectedValuePath="Id"/>
+            <TextBox x:Name="SearchTextBox" Grid.Column="2" Margin="0,0,8,0" ToolTip="Search snippet text"/>
+            <Button Grid.Column="3" Content="Search" Width="90" Click="Search_OnClick"/>
+        </Grid>
+
+        <DataGrid x:Name="ResultsGrid" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Snippet" Binding="{Binding TextPreview}" Width="3*"/>
+                <DataGridTextColumn Header="Document" Binding="{Binding DocumentTitle}" Width="2*"/>
+                <DataGridTextColumn Header="Locator" Binding="{Binding Locator}" Width="2*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Cancel" Width="90" Margin="0,0,8,0" IsCancel="True"/>
+            <Button Content="Link" Width="90" IsDefault="True" Click="Link_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

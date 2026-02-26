@@ -1,11 +1,10 @@
 namespace OseResearchVault.App.ViewModels;
 
-public sealed class DocumentSnippetListItemViewModel
+public sealed class SnippetPickerListItemViewModel
 {
     public string Id { get; init; } = string.Empty;
-    public string? CompanyId { get; init; }
+    public string DocumentId { get; init; } = string.Empty;
     public string DocumentTitle { get; init; } = string.Empty;
     public string Locator { get; init; } = string.Empty;
-    public string Text { get; init; } = string.Empty;
-    public string CreatedAt { get; init; } = string.Empty;
+    public string TextPreview { get; init; } = string.Empty;
 }
