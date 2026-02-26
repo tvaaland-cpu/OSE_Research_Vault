@@ -960,6 +960,12 @@
                         <TextBlock x:Name="WorkspaceBackupStatusText" Margin="0,8,0,0" Foreground="#FF4A5568"/>
                     </StackPanel>
                 </GroupBox>
+                <GroupBox Header="Diagnostics" Padding="12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Capture app logs and metadata for troubleshooting." Margin="0,0,0,8" Foreground="#FF4A5568"/>
+                        <Button Content="Export diagnostics…" Width="160" Click="ExportDiagnostics_OnClick"/>
+                    </StackPanel>
+                </GroupBox>
                 <GroupBox Header="Sharing" Padding="12" Margin="0,12,0,0">
                     <StackPanel>
                         <TextBlock Text="Share Log" FontWeight="SemiBold" Margin="0,0,0,8"/>

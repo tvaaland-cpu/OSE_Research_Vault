@@ -20,8 +20,9 @@ public partial class MainWindow : Window
     private readonly IReviewService _reviewService;
     private readonly IBackupService _backupService;
     private readonly IShareLogService _shareLogService;
+    private readonly IDiagnosticsService _diagnosticsService;
 
-    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService, IShareLogService shareLogService)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService, IShareLogService shareLogService, IDiagnosticsService diagnosticsService)
     {
         _viewModel = viewModel;
         _exportService = exportService;
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
         _reviewService = reviewService;
         _backupService = backupService;
         _shareLogService = shareLogService;
+        _diagnosticsService = diagnosticsService;
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
@@ -475,6 +477,32 @@ public partial class MainWindow : Window
 
         var summary = await _viewModel.FetchAnnouncementsForSelectedCompanyAsync(dialog.Days, dialog.ManualUrls);
         MessageBox.Show(this, summary, "Fetch announcements", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private async void ExportDiagnostics_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "Zip archive (*.zip)|*.zip",
+            FileName = $"diagnostics-{DateTime.UtcNow:yyyyMMddHHmmss}.zip",
+            DefaultExt = ".zip",
+            AddExtension = true
+        };
+
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        {
+            return;
+        }
+
+        try
+        {
+            await _diagnosticsService.ExportAsync(dialog.FileName);
+            MessageBox.Show(this, $"Diagnostics exported to:\n{dialog.FileName}", "Diagnostics exported", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to export diagnostics:\n{ex.Message}", "Diagnostics export failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private async void ImportPricesCsv_OnClick(object sender, RoutedEventArgs e)
