@@ -332,6 +332,8 @@ public sealed class SqliteAgentService(
             transaction,
             cancellationToken: cancellationToken));
 
+        await SaveRunContextAsync(connection, transaction, workspaceId, runId, BuildRunContextJson(selectedChunks), prompt, now, cancellationToken);
+
         var llmProvider = llmProviderFactory.GetProvider(generationSettings.Provider);
         string responseText;
         string runStatus;
@@ -428,6 +430,26 @@ public sealed class SqliteAgentService(
         return rows.ToList();
     }
 
+    public async Task<RunContextRecord?> GetRunContextAsync(string runId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        return await connection.QuerySingleOrDefaultAsync<RunContextRecord>(new CommandDefinition(
+            @"SELECT run_context_id AS RunContextId,
+                     COALESCE(workspace_id, '') AS WorkspaceId,
+                     run_id AS RunId,
+                     context_json AS ContextJson,
+                     prompt_text AS PromptText,
+                     created_at AS CreatedAt
+                FROM run_context
+               WHERE run_id = @RunId
+            ORDER BY created_at DESC
+               LIMIT 1",
+            new { RunId = runId }, cancellationToken: cancellationToken));
+    }
+
     public async Task<AskMyVaultResult> ExecuteAskMyVaultAsync(AskMyVaultRequest request, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -488,6 +510,8 @@ public sealed class SqliteAgentService(
                 OutputJson = JsonSerializer.Serialize(new { promptLength = prompt.Length, citationLabels = promptLabels }),
                 Now = now
             }, transaction, cancellationToken: cancellationToken));
+
+        await SaveRunContextAsync(connection, transaction, workspaceId, runId, BuildRunContextJson(selectedChunks), prompt, now, cancellationToken);
 
         var llmProvider = llmProviderFactory.GetProvider(generationSettings.Provider);
         string responseText;
@@ -955,6 +979,47 @@ public sealed class SqliteAgentService(
         }
 
         return total;
+    }
+
+    private static string BuildRunContextJson(IReadOnlyList<DocumentChunkScore> selectedChunks)
+    {
+        var items = selectedChunks.Select(chunk => new
+        {
+            documentTextId = chunk.DocumentTextId,
+            documentId = chunk.DocumentId,
+            chunkIndex = chunk.ChunkIndex,
+            excerpt = chunk.Content,
+            locator = $"chunk:{chunk.ChunkIndex}",
+            citationLabel = $"DOC:{chunk.DocumentId}|chunk:{chunk.ChunkIndex}",
+            score = chunk.Score,
+            title = chunk.DocumentTitle
+        });
+
+        return JsonSerializer.Serialize(new { items });
+    }
+
+    private static async Task SaveRunContextAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string workspaceId,
+        string runId,
+        string contextJson,
+        string promptText,
+        string now,
+        CancellationToken cancellationToken)
+    {
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO run_context (run_context_id, workspace_id, run_id, context_json, prompt_text, created_at)
+              VALUES (@RunContextId, @WorkspaceId, @RunId, @ContextJson, @PromptText, @Now)",
+            new
+            {
+                RunContextId = Guid.NewGuid().ToString(),
+                WorkspaceId = workspaceId,
+                RunId = runId,
+                ContextJson = string.IsNullOrWhiteSpace(contextJson) ? "{}" : contextJson,
+                PromptText = string.IsNullOrWhiteSpace(promptText) ? "(empty prompt)" : promptText,
+                Now = now
+            }, transaction, cancellationToken: cancellationToken));
     }
 
     private static async Task ClearDefaultModelProfileAsync(SqliteConnection connection, SqliteTransaction transaction, string workspaceId, CancellationToken cancellationToken)

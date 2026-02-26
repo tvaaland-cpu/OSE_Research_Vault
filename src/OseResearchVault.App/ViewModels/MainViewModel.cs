@@ -81,6 +81,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _agentStatusMessage = "Create reusable agent templates and run history.";
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
+    private string _runContextJson = string.Empty;
+    private string _runPromptText = string.Empty;
     private string _metricName = string.Empty;
     private string _metricPeriod = string.Empty;
     private string _metricValue = string.Empty;
@@ -1017,6 +1019,8 @@ public sealed partial class MainViewModel : ViewModelBase
     public bool ImportInboxEnabled { get => _importInboxEnabled; set => SetProperty(ref _importInboxEnabled, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+    public string RunContextJson { get => _runContextJson; set => SetProperty(ref _runContextJson, value); }
+    public string RunPromptText { get => _runPromptText; set => SetProperty(ref _runPromptText, value); }
     public string AutomationStatusMessage { get => _automationStatusMessage; set => SetProperty(ref _automationStatusMessage, value); }
     public string EvidenceCoverageLabel
     {
@@ -2285,6 +2289,8 @@ public sealed partial class MainViewModel : ViewModelBase
         if (run is null)
         {
             RunInputSummary = "Select a run to view notebook details.";
+            RunContextJson = string.Empty;
+            RunPromptText = string.Empty;
             ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
             return;
         }
@@ -2295,8 +2301,10 @@ public sealed partial class MainViewModel : ViewModelBase
         RunToolCallsSummary = toolCalls.Count == 0
             ? "No tool calls captured."
             : string.Join(Environment.NewLine, toolCalls.Select(tc => $"{tc.Name} [{tc.Status}]"));
-            ? "No tool calls recorded."
-            : string.Join(Environment.NewLine, toolCalls.Select(x => $"{x.Name} ({x.Status})"));
+
+        var runContext = await _agentService.GetRunContextAsync(run.Id);
+        RunContextJson = runContext?.ContextJson ?? "(No stored context for this run.)";
+        RunPromptText = runContext?.PromptText ?? "(No stored prompt for this run.)";
 
         var artifacts = await _agentService.GetArtifactsAsync(run.Id);
         foreach (var artifact in artifacts)
