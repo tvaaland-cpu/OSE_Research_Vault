@@ -63,6 +63,7 @@ public partial class App : Application
         services.AddSingleton<IEvidenceLinkRepository, SqliteEvidenceLinkRepository>();
         services.AddSingleton<IAutomationRepository, SqliteAutomationRepository>();
         services.AddSingleton<IMetricRepository, SqliteMetricRepository>();
+        services.AddSingleton<ITradeRepository, SqliteTradeRepository>();
         services.AddSingleton<IEvidenceService, EvidenceService>();
         services.AddSingleton<IMetricService, MetricService>();
         services.AddSingleton<IFtsSyncService, SqliteFtsSyncService>();
@@ -89,6 +90,8 @@ public partial class App : Application
         services.AddSingleton<IConnector, AnnouncementsConnector>();
         services.AddSingleton<IConnectorRegistry, ConnectorRegistry>();
         services.AddSingleton<IMetricService, SqliteMetricService>();
+        services.AddSingleton<ITradeService, SqliteTradeService>();
+        services.AddSingleton<IPositionAnalyticsService, PositionAnalyticsService>();
         services.AddSingleton<IExportService, SqliteExportService>();
         services.AddSingleton<IBackupService, SqliteBackupService>();
         services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
