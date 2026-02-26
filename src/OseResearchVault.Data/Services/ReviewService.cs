@@ -147,6 +147,163 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
         };
     }
 
+
+    public async Task<QuarterlyReviewResult> GenerateQuarterlyCompanyReviewAsync(string workspaceId, string companyId, string periodLabel, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(companyId))
+        {
+            throw new InvalidOperationException("Company is required for quarterly review generation.");
+        }
+
+        var normalizedPeriod = NormalizeQuarterLabel(periodLabel);
+        var (periodStart, periodEndExclusive) = ResolveQuarterWindow(normalizedPeriod);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var resolvedWorkspaceId = await ResolveWorkspaceIdAsync(connection, workspaceId, cancellationToken);
+        var company = await connection.QuerySingleOrDefaultAsync<CompanyRow>(new CommandDefinition(
+            @"SELECT id AS CompanyId, name AS CompanyName
+                FROM company
+               WHERE id = @CompanyId
+                 AND workspace_id = @WorkspaceId",
+            new { CompanyId = companyId, WorkspaceId = resolvedWorkspaceId },
+            cancellationToken: cancellationToken));
+
+        if (company is null)
+        {
+            throw new InvalidOperationException("Company not found for quarterly review generation.");
+        }
+
+        var thesisVersions = (await connection.QueryAsync<ThesisRow>(new CommandDefinition(
+            @"SELECT thesis_version_id AS ThesisVersionId,
+                     title AS Title,
+                     body AS Body,
+                     created_at AS CreatedAt
+                FROM thesis_version
+               WHERE company_id = @CompanyId
+            ORDER BY created_at DESC",
+            new { CompanyId = companyId },
+            cancellationToken: cancellationToken))).ToList();
+
+        var journalEntries = (await connection.QueryAsync<JournalRow>(new CommandDefinition(
+            @"SELECT journal_entry_id AS JournalEntryId,
+                     entry_date AS EntryDate,
+                     action AS Action,
+                     rationale AS Rationale
+                FROM journal_entry
+               WHERE company_id = @CompanyId
+                 AND entry_date >= @WindowStart
+                 AND entry_date < @WindowEnd
+            ORDER BY entry_date DESC",
+            new { CompanyId = companyId, WindowStart = periodStart.ToString("yyyy-MM-dd"), WindowEnd = periodEndExclusive.ToString("yyyy-MM-dd") },
+            cancellationToken: cancellationToken))).ToList();
+
+        var metricRows = (await connection.QueryAsync<MetricRow>(new CommandDefinition(
+            @"SELECT id AS MetricId,
+                     metric_key AS MetricKey,
+                     COALESCE(NULLIF(TRIM(period_label), ''), NULLIF(TRIM(period_end), ''), NULLIF(TRIM(period_start), ''), substr(recorded_at, 1, 10)) AS PeriodLabel,
+                     COALESCE(metric_value, 0) AS MetricValue,
+                     unit AS Unit,
+                     currency AS Currency,
+                     recorded_at AS RecordedAt
+                FROM metric
+               WHERE company_id = @CompanyId
+            ORDER BY recorded_at DESC, created_at DESC",
+            new { CompanyId = companyId },
+            cancellationToken: cancellationToken))).ToList();
+
+        var scenarios = (await connection.QueryAsync<ScenarioRow>(new CommandDefinition(
+            @"SELECT scenario_id AS ScenarioId,
+                     name AS Name,
+                     probability AS Probability,
+                     assumptions AS Assumptions
+                FROM scenario
+               WHERE company_id = @CompanyId
+            ORDER BY probability DESC, name",
+            new { CompanyId = companyId },
+            cancellationToken: cancellationToken))).ToList();
+
+        var scenarioKpis = (await connection.QueryAsync<ScenarioKpiRow>(new CommandDefinition(
+            @"SELECT sk.scenario_kpi_id AS ScenarioKpiId,
+                     sk.scenario_id AS ScenarioId,
+                     sk.kpi_name AS KpiName,
+                     sk.period AS Period,
+                     sk.value AS Value,
+                     sk.unit AS Unit,
+                     sk.currency AS Currency
+                FROM scenario_kpi sk
+                JOIN scenario s ON s.scenario_id = sk.scenario_id
+               WHERE s.company_id = @CompanyId
+            ORDER BY sk.period DESC, sk.kpi_name",
+            new { CompanyId = companyId },
+            cancellationToken: cancellationToken))).ToList();
+
+        var catalysts = (await connection.QueryAsync<CatalystDetailRow>(new CommandDefinition(
+            @"SELECT catalyst_id AS CatalystId,
+                     title AS Title,
+                     status AS Status,
+                     impact AS Impact,
+                     expected_start AS ExpectedStart
+                FROM catalyst
+               WHERE company_id = @CompanyId
+            ORDER BY CASE status WHEN 'open' THEN 0 WHEN 'done' THEN 1 ELSE 2 END,
+                     COALESCE(expected_start, '9999-12-31'),
+                     title",
+            new { CompanyId = companyId },
+            cancellationToken: cancellationToken))).ToList();
+
+        var documents = (await connection.QueryAsync<DocumentLinkRow>(new CommandDefinition(
+            @"SELECT id AS ItemId,
+                     title AS Title,
+                     created_at AS CreatedAt
+                FROM document
+               WHERE company_id = @CompanyId
+                 AND created_at >= @WindowStart
+                 AND created_at < @WindowEnd
+            ORDER BY created_at DESC",
+            new { CompanyId = companyId, WindowStart = periodStart.ToString("O"), WindowEnd = periodEndExclusive.ToString("O") },
+            cancellationToken: cancellationToken))).ToList();
+
+        var evidences = (await connection.QueryAsync<EvidenceLinkRow>(new CommandDefinition(
+            @"SELECT s.id AS SnippetId,
+                     COALESCE(d.title, 'Untitled document') AS DocumentTitle,
+                     s.created_at AS CreatedAt
+                FROM snippet s
+                LEFT JOIN document d ON d.id = s.document_id
+               WHERE s.company_id = @CompanyId
+                 AND s.created_at >= @WindowStart
+                 AND s.created_at < @WindowEnd
+            ORDER BY s.created_at DESC",
+            new { CompanyId = companyId, WindowStart = periodStart.ToString("O"), WindowEnd = periodEndExclusive.ToString("O") },
+            cancellationToken: cancellationToken))).ToList();
+
+        var title = $"Quarterly Review {company.CompanyName} {normalizedPeriod}";
+        var content = BuildQuarterlyReviewContent(company.CompanyName, normalizedPeriod, periodStart, periodEndExclusive, thesisVersions, journalEntries, metricRows, scenarios, scenarioKpis, catalysts, documents, evidences);
+        var noteId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow.ToString("O");
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO note (id, workspace_id, company_id, title, content, note_type, created_at, updated_at)
+              VALUES (@Id, @WorkspaceId, @CompanyId, @Title, @Content, 'log', @Now, @Now)",
+            new { Id = noteId, WorkspaceId = resolvedWorkspaceId, CompanyId = companyId, Title = title, Content = content, Now = now },
+            cancellationToken: cancellationToken));
+
+        await ftsSyncService.UpsertNoteAsync(noteId, title, content, cancellationToken);
+
+        return new QuarterlyReviewResult
+        {
+            NoteId = noteId,
+            NoteTitle = title,
+            JournalEntriesCount = journalEntries.Count,
+            DocumentCount = documents.Count,
+            EvidenceCount = evidences.Count,
+            ScenarioCount = scenarios.Count,
+            CatalystCount = catalysts.Count
+        };
+    }
+
     private static string BuildWeeklyReviewContent(
         DateOnly asOfDate,
         DateTime windowStart,
@@ -251,6 +408,157 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
         return sb.ToString().TrimEnd();
     }
 
+    private static string BuildQuarterlyReviewContent(
+        string companyName,
+        string periodLabel,
+        DateOnly periodStart,
+        DateOnly periodEndExclusive,
+        IReadOnlyList<ThesisRow> thesisVersions,
+        IReadOnlyList<JournalRow> journalEntries,
+        IReadOnlyList<MetricRow> metricRows,
+        IReadOnlyList<ScenarioRow> scenarios,
+        IReadOnlyList<ScenarioKpiRow> scenarioKpis,
+        IReadOnlyList<CatalystDetailRow> catalysts,
+        IReadOnlyList<DocumentLinkRow> documents,
+        IReadOnlyList<EvidenceLinkRow> evidences)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"# Quarterly Review {companyName} {periodLabel}");
+        sb.AppendLine($"Period window: {periodStart:yyyy-MM-dd} to {periodEndExclusive.AddDays(-1):yyyy-MM-dd}");
+        sb.AppendLine();
+
+        sb.AppendLine("## Latest thesis");
+        if (thesisVersions.Count == 0)
+        {
+            sb.AppendLine("- None recorded.");
+        }
+        else
+        {
+            var latest = thesisVersions[0];
+            sb.AppendLine($"- **{latest.Title}** (`thesis_version:{latest.ThesisVersionId}`), updated {FormatDate(latest.CreatedAt)}");
+            sb.AppendLine($"- Summary: {latest.Body.Replace(Environment.NewLine, " ").Trim()}");
+            sb.AppendLine("- Thesis history:");
+            foreach (var thesis in thesisVersions.Take(5))
+            {
+                sb.AppendLine($"  - {thesis.Title} (`thesis_version:{thesis.ThesisVersionId}`) at {FormatDate(thesis.CreatedAt)}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Journal entries since last quarter");
+        if (journalEntries.Count == 0)
+        {
+            sb.AppendLine("- None");
+        }
+        else
+        {
+            foreach (var entry in journalEntries)
+            {
+                sb.AppendLine($"- {entry.EntryDate}: {entry.Action} (`journal_entry:{entry.JournalEntryId}`) — {entry.Rationale}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Metrics table (top metrics, last 4 periods)");
+        var topMetricNames = metricRows.GroupBy(m => m.MetricKey)
+            .OrderByDescending(g => g.Max(x => x.RecordedAt))
+            .Take(5)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (topMetricNames.Count == 0)
+        {
+            sb.AppendLine("- None");
+        }
+        else
+        {
+            sb.AppendLine("| Metric | P1 | P2 | P3 | P4 |");
+            sb.AppendLine("|---|---|---|---|---|");
+            foreach (var metricName in topMetricNames)
+            {
+                var cells = metricRows.Where(m => string.Equals(m.MetricKey, metricName, StringComparison.OrdinalIgnoreCase))
+                    .Take(4)
+                    .Select(m => $"{m.PeriodLabel}: {m.MetricValue:0.####}{(string.IsNullOrWhiteSpace(m.Unit) ? string.Empty : $" {m.Unit}")}{(string.IsNullOrWhiteSpace(m.Currency) ? string.Empty : $" {m.Currency}")}")
+                    .ToList();
+                while (cells.Count < 4)
+                {
+                    cells.Add("-");
+                }
+
+                sb.AppendLine($"| {metricName} | {cells[0]} | {cells[1]} | {cells[2]} | {cells[3]} |");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Scenario probabilities + key KPIs");
+        if (scenarios.Count == 0)
+        {
+            sb.AppendLine("- None");
+        }
+        else
+        {
+            foreach (var scenario in scenarios)
+            {
+                sb.AppendLine($"- **{scenario.Name}** (`scenario:{scenario.ScenarioId}`): probability {scenario.Probability:P1}");
+                foreach (var kpi in scenarioKpis.Where(k => k.ScenarioId == scenario.ScenarioId).Take(3))
+                {
+                    sb.AppendLine($"  - KPI {kpi.KpiName} ({kpi.Period}) = {kpi.Value:0.####} {kpi.Unit} {kpi.Currency} (`scenario_kpi:{kpi.ScenarioKpiId}`)");
+                }
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Catalysts status summary");
+        if (catalysts.Count == 0)
+        {
+            sb.AppendLine("- None");
+        }
+        else
+        {
+            sb.AppendLine($"- Open: {catalysts.Count(c => c.Status == "open")}, Done: {catalysts.Count(c => c.Status == "done")}, Invalidated: {catalysts.Count(c => c.Status == "invalidated")}");
+            foreach (var catalyst in catalysts.Take(8))
+            {
+                sb.AppendLine($"  - {catalyst.Title} (`catalyst:{catalyst.CatalystId}`), status={catalyst.Status}, impact={catalyst.Impact}, expected={catalyst.ExpectedStart}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## New evidence/documents since last quarter");
+        sb.AppendLine($"- Documents added: {documents.Count}");
+        foreach (var document in documents.Take(10))
+        {
+            sb.AppendLine($"  - {document.Title} (`document:{document.ItemId}`) on {FormatDate(document.CreatedAt)}");
+        }
+
+        sb.AppendLine($"- Evidence snippets added: {evidences.Count}");
+        foreach (var evidence in evidences.Take(10))
+        {
+            sb.AppendLine($"  - {evidence.DocumentTitle} (`snippet:{evidence.SnippetId}`) on {FormatDate(evidence.CreatedAt)}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string NormalizeQuarterLabel(string periodLabel)
+    {
+        var value = (periodLabel ?? string.Empty).Trim().ToUpperInvariant().Replace("-", string.Empty).Replace(" ", string.Empty);
+        if (value.Length != 6 || value[4] != 'Q' || !int.TryParse(value[..4], out _) || value[5] < '1' || value[5] > '4')
+        {
+            throw new InvalidOperationException("Period must use format YYYYQ1..YYYYQ4.");
+        }
+
+        return value;
+    }
+
+    private static (DateOnly Start, DateOnly EndExclusive) ResolveQuarterWindow(string periodLabel)
+    {
+        var year = int.Parse(periodLabel[..4]);
+        var quarter = int.Parse(periodLabel[5..]);
+        var startMonth = ((quarter - 1) * 3) + 1;
+        var start = new DateOnly(year, startMonth, 1);
+        return (start, start.AddMonths(3));
+    }
+
     private static string FormatDate(string value)
     {
         return DateTime.TryParse(value, out var parsed)
@@ -287,4 +595,13 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
     private sealed record CatalystRow(string CatalystId, string Title, string CompanyName, string? ExpectedStart, string Status);
     private sealed record TradeRow(string TradeId, string CompanyName, string TradeDate, string Side, double Quantity, double Price, string Currency);
     private sealed record PositionDelta(string CompanyName, double NetQuantity);
+    private sealed record CompanyRow(string CompanyId, string CompanyName);
+    private sealed record ThesisRow(string ThesisVersionId, string Title, string Body, string CreatedAt);
+    private sealed record JournalRow(string JournalEntryId, string EntryDate, string Action, string Rationale);
+    private sealed record MetricRow(string MetricId, string MetricKey, string PeriodLabel, double MetricValue, string? Unit, string? Currency, string RecordedAt);
+    private sealed record ScenarioRow(string ScenarioId, string Name, double Probability, string? Assumptions);
+    private sealed record ScenarioKpiRow(string ScenarioKpiId, string ScenarioId, string KpiName, string Period, double Value, string? Unit, string? Currency);
+    private sealed record CatalystDetailRow(string CatalystId, string Title, string Status, string Impact, string? ExpectedStart);
+    private sealed record DocumentLinkRow(string ItemId, string Title, string CreatedAt);
+    private sealed record EvidenceLinkRow(string SnippetId, string DocumentTitle, string CreatedAt);
 }

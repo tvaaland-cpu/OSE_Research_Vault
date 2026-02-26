@@ -74,6 +74,117 @@ public sealed class ReviewServiceTests
         }
     }
 
+    [Fact]
+    public async Task GenerateQuarterlyCompanyReviewAsync_CreatesExpectedSections()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var settings = await settingsService.GetSettingsAsync();
+            await using var connection = OpenConnection(settings.DatabaseFilePath);
+            await connection.OpenAsync();
+
+            var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
+            var companyId = Guid.NewGuid().ToString();
+            await connection.ExecuteAsync(
+                @"INSERT INTO company (id, workspace_id, name, created_at, updated_at)
+                  VALUES (@Id, @WorkspaceId, 'ReviewCo', '2025-12-31T00:00:00Z', '2025-12-31T00:00:00Z')",
+                new { Id = companyId, WorkspaceId = workspaceId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO thesis_version (thesis_version_id, workspace_id, company_id, title, body, created_at, created_by)
+                  VALUES
+                  ('thesis-new', @WorkspaceId, @CompanyId, 'Core thesis', 'Demand is accelerating.', '2026-01-12T00:00:00Z', 'user'),
+                  ('thesis-old', @WorkspaceId, @CompanyId, 'Old thesis', 'Legacy body', '2025-10-01T00:00:00Z', 'user')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO journal_entry (journal_entry_id, workspace_id, company_id, action, entry_date, rationale, created_at)
+                  VALUES
+                  ('journal-1', @WorkspaceId, @CompanyId, 'buy', '2026-01-15', 'New contract wins', '2026-01-15T00:00:00Z'),
+                  ('journal-2', @WorkspaceId, @CompanyId, 'hold', '2026-02-12', 'Execution on track', '2026-02-12T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO metric (id, workspace_id, company_id, metric_key, metric_value, period_end, period_label, unit, recorded_at, created_at)
+                  VALUES
+                  ('metric-1', @WorkspaceId, @CompanyId, 'Revenue', 120, '2025-12-31', '2025Q4', 'MNOK', '2026-01-20T00:00:00Z', '2026-01-20T00:00:00Z'),
+                  ('metric-2', @WorkspaceId, @CompanyId, 'Revenue', 140, '2026-03-31', '2026Q1', 'MNOK', '2026-03-31T00:00:00Z', '2026-03-31T00:00:00Z'),
+                  ('metric-3', @WorkspaceId, @CompanyId, 'EBITDA', 30, '2025-12-31', '2025Q4', 'MNOK', '2026-01-20T00:00:00Z', '2026-01-20T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO scenario (scenario_id, workspace_id, company_id, name, probability, assumptions, created_at, updated_at)
+                  VALUES
+                  ('scenario-base', @WorkspaceId, @CompanyId, 'Base', 0.6, 'Steady execution', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO scenario_kpi (scenario_kpi_id, workspace_id, scenario_id, kpi_name, period, value, unit, created_at)
+                  VALUES
+                  ('kpi-1', @WorkspaceId, 'scenario-base', 'ARR', '2026Q1', 200, 'MNOK', '2026-02-01T00:00:00Z')",
+                new { WorkspaceId = workspaceId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO catalyst (catalyst_id, workspace_id, company_id, title, expected_start, status, impact, created_at, updated_at)
+                  VALUES
+                  ('cat-open', @WorkspaceId, @CompanyId, 'New product launch', '2026-02-15', 'open', 'high', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                  ('cat-done', @WorkspaceId, @CompanyId, 'Pricing update', '2026-01-15', 'done', 'med', '2026-01-01T00:00:00Z', '2026-01-20T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO document (id, workspace_id, company_id, title, created_at, updated_at)
+                  VALUES
+                  ('doc-quarter', @WorkspaceId, @CompanyId, 'Q1 Report', '2026-02-10T00:00:00Z', '2026-02-10T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO snippet (id, workspace_id, company_id, document_id, quote_text, locator, created_at)
+                  VALUES
+                  ('snippet-quarter', @WorkspaceId, @CompanyId, 'doc-quarter', 'Quote', 'p.1', '2026-02-11T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            var ftsSyncService = new CapturingFtsSyncService();
+            var service = new ReviewService(settingsService, ftsSyncService);
+
+            var result = await service.GenerateQuarterlyCompanyReviewAsync(workspaceId, companyId, "2026Q1");
+
+            var generated = await connection.QuerySingleAsync<GeneratedNoteRow>(
+                "SELECT title AS Title, content AS Content, note_type AS NoteType FROM note WHERE id = @Id",
+                new { Id = result.NoteId });
+
+            Assert.Equal("log", generated.NoteType);
+            Assert.Equal("Quarterly Review ReviewCo 2026Q1", generated.Title);
+            Assert.Contains("## Latest thesis", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("## Journal entries since last quarter", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("journal_entry:journal-1", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("## Metrics table (top metrics, last 4 periods)", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("Revenue", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("## Scenario probabilities + key KPIs", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("scenario:scenario-base", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("scenario_kpi:kpi-1", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("## Catalysts status summary", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("Open: 1, Done: 1", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("## New evidence/documents since last quarter", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("Documents added: 1", generated.Content, StringComparison.Ordinal);
+            Assert.Contains("Evidence snippets added: 1", generated.Content, StringComparison.Ordinal);
+            Assert.Equal(result.NoteId, ftsSyncService.LastNoteId);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static async Task SeedDataAsync(SqliteConnection connection, string workspaceId, string companyId)
     {
         await connection.ExecuteAsync(
