@@ -472,12 +472,17 @@ public sealed class SqliteAgentService(
                      dt.chunk_index AS ChunkIndex,
                      dt.content AS Content,
                      d.title AS DocumentTitle,
+                     COALESCE(d.imported_at, d.created_at) AS DocumentOccurredAt,
                      0.0 AS Score
                 FROM document_text dt
                 INNER JOIN document d ON d.id = dt.document_id
                WHERE dt.document_id IN @Ids", new { Ids = ids }, cancellationToken: cancellationToken))).ToList();
 
-        var queryTokens = Tokenize(request.Query).ToArray();
+        var expansionTokens = await GetCompanyExpansionTokensAsync(connection, request.CompanyId, cancellationToken);
+        var queryTokens = Tokenize(request.Query)
+            .Concat(expansionTokens)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         if (queryTokens.Length == 0)
         {
             return chunks.OrderBy(x => x.ChunkIndex).Take(Math.Max(1, takeCount)).ToList();
@@ -504,14 +509,130 @@ public sealed class SqliteAgentService(
                 score += tf * idf;
             }
 
+            var titleMatches = queryTokens.Sum(token => CountOccurrences(chunk.DocumentTitle, token));
+            if (titleMatches > 0)
+            {
+                score += titleMatches * 2.25d;
+            }
+
+            score += CalculateRecencyBoost(chunk.DocumentId, chunks);
+
             chunk.Score = score;
         }
 
-        return chunks
+        var ranked = chunks
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.ChunkIndex)
+            .ToList();
+
+        return ApplyDocumentDedupe(ranked, Math.Max(1, takeCount))
             .Take(Math.Max(1, takeCount))
             .ToList();
+    }
+
+    private static IReadOnlyList<DocumentChunkScore> ApplyDocumentDedupe(IReadOnlyList<DocumentChunkScore> ranked, int takeCount)
+    {
+        var deduped = new List<DocumentChunkScore>(takeCount);
+        var skipped = new List<DocumentChunkScore>();
+        var perDocumentSignatures = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var chunk in ranked)
+        {
+            if (!perDocumentSignatures.TryGetValue(chunk.DocumentId, out var signatures))
+            {
+                signatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                perDocumentSignatures[chunk.DocumentId] = signatures;
+            }
+
+            var signature = CreateDedupeSignature(chunk.Content);
+            if (signatures.Add(signature))
+            {
+                deduped.Add(chunk);
+                if (deduped.Count >= takeCount)
+                {
+                    return deduped;
+                }
+
+                continue;
+            }
+
+            skipped.Add(chunk);
+        }
+
+        foreach (var skippedChunk in skipped)
+        {
+            deduped.Add(skippedChunk);
+            if (deduped.Count >= takeCount)
+            {
+                break;
+            }
+        }
+
+        return deduped;
+    }
+
+    private static double CalculateRecencyBoost(string documentId, IReadOnlyCollection<DocumentChunkScore> chunks)
+    {
+        if (chunks.Count <= 1)
+        {
+            return 0d;
+        }
+
+        var documentDates = chunks
+            .Select(x => new { x.DocumentId, Timestamp = ParseTimestamp(x.DocumentOccurredAt) })
+            .GroupBy(x => x.DocumentId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new { DocumentId = g.Key, Timestamp = g.Max(x => x.Timestamp) })
+            .OrderByDescending(x => x.Timestamp)
+            .ThenBy(x => x.DocumentId, StringComparer.Ordinal)
+            .ToList();
+
+        var rank = documentDates.FindIndex(x => string.Equals(x.DocumentId, documentId, StringComparison.OrdinalIgnoreCase));
+        if (rank < 0)
+        {
+            return 0d;
+        }
+
+        var divisor = Math.Max(1d, documentDates.Count - 1d);
+        return ((documentDates.Count - 1d - rank) / divisor) * 0.35d;
+    }
+
+    private static DateTime ParseTimestamp(string? value)
+    {
+        return DateTime.TryParse(value, out var parsed) ? parsed : DateTime.MinValue;
+    }
+
+    private static async Task<IReadOnlyList<string>> GetCompanyExpansionTokensAsync(SqliteConnection connection, string? companyId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(companyId))
+        {
+            return [];
+        }
+
+        var row = await connection.QuerySingleOrDefaultAsync<(string? Ticker, string? Isin)>(new CommandDefinition(
+            "SELECT ticker AS Ticker, isin AS Isin FROM company WHERE id = @Id",
+            new { Id = companyId },
+            cancellationToken: cancellationToken));
+
+        return Tokenize($"{row.Ticker} {row.Isin}").Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static string CreateDedupeSignature(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
+        var chars = content
+            .Trim()
+            .ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || char.IsWhiteSpace(c))
+            .ToArray();
+
+        var normalized = string.Join(' ', new string(chars)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        return normalized.Length <= 240 ? normalized : normalized[..240];
     }
 
     private static int CountOccurrences(string content, string token)
@@ -792,6 +913,7 @@ public sealed class SqliteAgentService(
         public int ChunkIndex { get; init; }
         public string Content { get; init; } = string.Empty;
         public string DocumentTitle { get; init; } = string.Empty;
+        public string? DocumentOccurredAt { get; init; }
         public double Score { get; set; }
     }
 
