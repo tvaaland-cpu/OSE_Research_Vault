@@ -94,6 +94,7 @@ public sealed class AgentRunFlowTests
 
     [Fact]
     public async Task CreateRunAsync_ParsesSnippetAndDocumentCitationsIntoEvidenceLinks()
+    public async Task AskMyVaultRunStoresSummaryToolCallsAndEvidenceLinks()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -107,6 +108,7 @@ public sealed class AgentRunFlowTests
             var ftsSyncService = new SqliteFtsSyncService(settingsService);
             var docService = new SqliteDocumentImportService(settingsService, ftsSyncService, NullLogger<SqliteDocumentImportService>.Instance);
             var providerFactory = new LlmProviderFactory([new CitationLlmProvider()]);
+            var providerFactory = new LlmProviderFactory([new LocalEchoLlmProvider()]);
             var agentService = new SqliteAgentService(settingsService, providerFactory);
 
             var inputDirectory = Path.Combine(tempRoot, "inputs");
@@ -141,6 +143,42 @@ public sealed class AgentRunFlowTests
             var toolCallNames = (await connection.QueryAsync<string>("SELECT name FROM tool_call WHERE agent_run_id = @RunId", new { RunId = runId })).ToList();
             Assert.Contains("local_search", toolCallNames);
             Assert.Contains("prompt_build", toolCallNames);
+            var txtPath = Path.Combine(inputDirectory, "evidence.txt");
+            await File.WriteAllTextAsync(txtPath, "revenue increased and margin expanded");
+            var importResults = await docService.ImportFilesAsync([txtPath]);
+            Assert.True(importResults[0].Succeeded);
+            var doc = (await docService.GetDocumentsAsync()).Single();
+
+            var askResult = await agentService.ExecuteAskMyVaultAsync(new AskMyVaultRequest
+            {
+                Query = "Summarize changes",
+                SelectedDocumentIds = [doc.Id]
+            });
+
+            Assert.True(askResult.CitationsDetected);
+
+            var artifacts = await agentService.GetArtifactsAsync(askResult.RunId);
+            var artifact = Assert.Single(artifacts);
+            Assert.Contains("[DOC:", artifact.Content);
+
+            var toolCalls = await agentService.GetToolCallsAsync(askResult.RunId);
+            Assert.Equal(2, toolCalls.Count);
+            Assert.Contains(toolCalls, x => x.Name == "local_search");
+            Assert.Contains(toolCalls, x => x.Name == "prompt_build");
+
+            var settings = await settingsService.GetSettingsAsync();
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = settings.DatabaseFilePath,
+                ForeignKeys = true
+            }.ToString());
+            await connection.OpenAsync();
+
+            var askTemplateCount = await connection.QuerySingleAsync<int>("SELECT COUNT(1) FROM agent WHERE name = 'AskMyVault'");
+            Assert.Equal(1, askTemplateCount);
+
+            var evidenceCount = await connection.QuerySingleAsync<int>("SELECT COUNT(1) FROM evidence_link WHERE from_entity_type = 'artifact' AND from_entity_id = @Id", new { Id = artifact.Id });
+            Assert.True(evidenceCount > 0);
         }
         finally
         {

@@ -14,4 +14,6 @@ public sealed class EvidenceLink
 
     public string? SnippetText { get; init; }
     public string? DocumentTitle { get; init; }
+    public string? CompanyId { get; init; }
+    public string? CompanyName { get; init; }
 }
