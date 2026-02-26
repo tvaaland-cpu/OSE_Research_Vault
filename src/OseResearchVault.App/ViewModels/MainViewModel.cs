@@ -120,7 +120,7 @@ public sealed class MainViewModel : ViewModelBase
         OpenSearchResultCommand = new RelayCommand(() => OpenSearchResult(SelectedSearchResult), () => SelectedSearchResult is not null);
         SaveAgentTemplateCommand = new RelayCommand(() => _ = SaveAgentTemplateAsync(), () => !string.IsNullOrWhiteSpace(AgentName));
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
-        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
+        RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
 
         _selectedItem = NavigationItems[1];
@@ -423,7 +423,17 @@ public sealed class MainViewModel : ViewModelBase
     public string AgentAllowedTools { get => _agentAllowedTools; set => SetProperty(ref _agentAllowedTools, value); }
     public string AgentOutputSchema { get => _agentOutputSchema; set => SetProperty(ref _agentOutputSchema, value); }
     public string AgentEvidencePolicy { get => _agentEvidencePolicy; set => SetProperty(ref _agentEvidencePolicy, value); }
-    public string AgentQuery { get => _agentQuery; set => SetProperty(ref _agentQuery, value); }
+    public string AgentQuery
+    {
+        get => _agentQuery;
+        set
+        {
+            if (SetProperty(ref _agentQuery, value))
+            {
+                RunAgentCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
     public string AgentStatusMessage { get => _agentStatusMessage; set => SetProperty(ref _agentStatusMessage, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
@@ -1023,28 +1033,40 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RunAgentAsync()
     {
-        if (SelectedAgentTemplate is null)
-        {
-            return;
-        }
-
         var selectedDocIds = RunSelectableDocuments
             .Where(d => d.IsSelected)
             .Select(d => d.Id)
             .Distinct()
             .ToList();
 
-        var runId = await _agentService.CreateRunAsync(new AgentRunRequest
+        if (SelectedAgentTemplate is not null)
         {
-            AgentId = SelectedAgentTemplate.Id,
+            var runId = await _agentService.CreateRunAsync(new AgentRunRequest
+            {
+                AgentId = SelectedAgentTemplate.Id,
+                CompanyId = SelectedRunCompany?.Id,
+                Query = AgentQuery,
+                SelectedDocumentIds = selectedDocIds
+            });
+
+            AgentStatusMessage = "Run executed and output artifact captured.";
+            await LoadAgentRunsAsync();
+            SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+            return;
+        }
+
+        var askResult = await _agentService.ExecuteAskMyVaultAsync(new AskMyVaultRequest
+        {
             CompanyId = SelectedRunCompany?.Id,
             Query = AgentQuery,
             SelectedDocumentIds = selectedDocIds
         });
 
-        AgentStatusMessage = "Run executed and output artifact captured.";
+        AgentStatusMessage = askResult.CitationsDetected
+            ? "Answer generated and stored in run history."
+            : "Answer generated and stored in run history. No citations detected.";
         await LoadAgentRunsAsync();
-        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+        SelectedAgentRun = AgentRuns.FirstOrDefault(x => x.Id == askResult.RunId);
     }
 
     private async Task LoadRunNotebookAsync(AgentRunListItemViewModel? run)
@@ -1058,7 +1080,10 @@ public sealed class MainViewModel : ViewModelBase
 
         var selectedDocIds = JsonSerializer.Deserialize<List<string>>(run.SelectedDocumentIdsJson) ?? [];
         RunInputSummary = $"Query: {run.Query}{Environment.NewLine}Selected docs: {(selectedDocIds.Count == 0 ? "(none)" : string.Join(", ", selectedDocIds))}";
-        RunToolCallsSummary = "No tool calls yet (MVP).";
+        var toolCalls = await _agentService.GetToolCallsAsync(run.Id);
+        RunToolCallsSummary = toolCalls.Count == 0
+            ? "No tool calls recorded."
+            : string.Join(Environment.NewLine, toolCalls.Select(x => $"{x.Name} ({x.Status})"));
 
         var artifacts = await _agentService.GetArtifactsAsync(run.Id);
         foreach (var artifact in artifacts)
