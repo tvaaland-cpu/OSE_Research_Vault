@@ -136,6 +136,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _investmentMemoStatusMessage = string.Empty;
     private string _selectedDocumentWorkspaceId = string.Empty;
     private CompanyMetricListItemViewModel? _selectedHubMetric;
+    private ScenarioListItemViewModel? _selectedScenario;
+    private ScenarioKpiListItemViewModel? _selectedScenarioKpi;
     private string _selectedMetricNameFilter = "All";
     private string _metricPeriodFilter = string.Empty;
     private string _metricEditName = string.Empty;
@@ -143,6 +145,16 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricEditValue = string.Empty;
     private string _metricEditUnit = string.Empty;
     private string _metricEditCurrency = string.Empty;
+    private string _scenarioName = "Base";
+    private string _scenarioProbability = "0.5";
+    private string _scenarioAssumptions = string.Empty;
+    private string _scenarioKpiName = string.Empty;
+    private string _scenarioKpiPeriod = string.Empty;
+    private string _scenarioKpiValue = string.Empty;
+    private string _scenarioKpiUnit = string.Empty;
+    private string _scenarioKpiCurrency = string.Empty;
+    private string _scenarioKpiSnippetId = string.Empty;
+    private string _scenarioStatusMessage = "Model scenarios per company.";
     private ConnectorListItemViewModel? _selectedConnector;
     private string _connectorUrl = "https://example.com";
     private string _connectorRunResult = "Run a connector to ingest snapshots.";
@@ -202,6 +214,8 @@ public sealed class MainViewModel : ViewModelBase
         HubNotes = [];
         HubEvents = [];
         HubMetrics = [];
+        Scenarios = [];
+        ScenarioKpis = [];
         AllHubMetrics = [];
         HubPrices = [];
         MetricNameOptions = ["All"];
@@ -273,6 +287,10 @@ public sealed class MainViewModel : ViewModelBase
         OpenMetricEvidenceCommand = new RelayCommand(param => _ = OpenMetricEvidenceAsync(param as CompanyMetricListItemViewModel));
         SaveMetricCommand = new RelayCommand(() => _ = SaveSelectedMetricAsync(), () => SelectedHubMetric is not null && !string.IsNullOrWhiteSpace(MetricEditName));
         DeleteMetricCommand = new RelayCommand(() => _ = DeleteSelectedMetricAsync(), () => SelectedHubMetric is not null);
+        SaveScenarioCommand = new RelayCommand(() => _ = SaveScenarioAsync(), () => SelectedHubCompany is not null && !string.IsNullOrWhiteSpace(ScenarioName));
+        DeleteScenarioCommand = new RelayCommand(() => _ = DeleteScenarioAsync(), () => SelectedScenario is not null);
+        SaveScenarioKpiCommand = new RelayCommand(() => _ = SaveScenarioKpiAsync(), () => SelectedScenario is not null && !string.IsNullOrWhiteSpace(ScenarioKpiName) && !string.IsNullOrWhiteSpace(ScenarioKpiPeriod));
+        DeleteScenarioKpiCommand = new RelayCommand(() => _ = DeleteScenarioKpiAsync(), () => SelectedScenarioKpi is not null);
         RunConnectorCommand = new RelayCommand(() => _ = RunSelectedConnectorAsync(), () => SelectedConnector is not null);
 
         _selectedItem = NavigationItems[1];
@@ -291,6 +309,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<string> HubNotes { get; }
     public ObservableCollection<string> HubEvents { get; }
     public ObservableCollection<CompanyMetricListItemViewModel> HubMetrics { get; }
+    public ObservableCollection<ScenarioListItemViewModel> Scenarios { get; }
+    public ObservableCollection<ScenarioKpiListItemViewModel> ScenarioKpis { get; }
     public ObservableCollection<CompanyMetricListItemViewModel> AllHubMetrics { get; }
     public ObservableCollection<PriceDailyListItemViewModel> HubPrices { get; }
     public ObservableCollection<string> MetricNameOptions { get; }
@@ -359,6 +379,10 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand OpenMetricEvidenceCommand { get; }
     public RelayCommand SaveMetricCommand { get; }
     public RelayCommand DeleteMetricCommand { get; }
+    public RelayCommand SaveScenarioCommand { get; }
+    public RelayCommand DeleteScenarioCommand { get; }
+    public RelayCommand SaveScenarioKpiCommand { get; }
+    public RelayCommand DeleteScenarioKpiCommand { get; }
     public RelayCommand RunConnectorCommand { get; }
 
     public NavigationItem SelectedItem
@@ -535,6 +559,7 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedHubCompany, value))
             {
                 SaveMetricCommand.RaiseCanExecuteChanged();
+                SaveScenarioCommand.RaiseCanExecuteChanged();
                 _ = LoadCompanyHubAsync(value?.Id);
             }
         }
@@ -589,6 +614,42 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public ScenarioListItemViewModel? SelectedScenario
+    {
+        get => _selectedScenario;
+        set
+        {
+            if (SetProperty(ref _selectedScenario, value))
+            {
+                DeleteScenarioCommand.RaiseCanExecuteChanged();
+                SaveScenarioKpiCommand.RaiseCanExecuteChanged();
+                ScenarioName = value?.Name ?? "Base";
+                ScenarioProbability = value is null ? "0.5" : value.Probability.ToString(CultureInfo.InvariantCulture);
+                ScenarioAssumptions = value?.Assumptions ?? string.Empty;
+                _ = LoadScenarioKpisAsync(value?.ScenarioId);
+                RecalculateScenarioProbability();
+            }
+        }
+    }
+
+    public ScenarioKpiListItemViewModel? SelectedScenarioKpi
+    {
+        get => _selectedScenarioKpi;
+        set
+        {
+            if (SetProperty(ref _selectedScenarioKpi, value))
+            {
+                DeleteScenarioKpiCommand.RaiseCanExecuteChanged();
+                ScenarioKpiName = value?.KpiName ?? string.Empty;
+                ScenarioKpiPeriod = value?.Period ?? string.Empty;
+                ScenarioKpiValue = value?.ValueDisplay ?? string.Empty;
+                ScenarioKpiUnit = value?.Unit ?? string.Empty;
+                ScenarioKpiCurrency = value?.Currency ?? string.Empty;
+                ScenarioKpiSnippetId = value?.SnippetId ?? string.Empty;
+            }
+        }
+    }
+
     public string SelectedMetricNameFilter
     {
         get => _selectedMetricNameFilter;
@@ -618,6 +679,25 @@ public sealed class MainViewModel : ViewModelBase
     public string MetricEditValue { get => _metricEditValue; set => SetProperty(ref _metricEditValue, value); }
     public string MetricEditUnit { get => _metricEditUnit; set => SetProperty(ref _metricEditUnit, value); }
     public string MetricEditCurrency { get => _metricEditCurrency; set => SetProperty(ref _metricEditCurrency, value); }
+    public string ScenarioName { get => _scenarioName; set { if (SetProperty(ref _scenarioName, value)) SaveScenarioCommand.RaiseCanExecuteChanged(); } }
+    public string ScenarioProbability { get => _scenarioProbability; set => SetProperty(ref _scenarioProbability, value); }
+    public string ScenarioAssumptions { get => _scenarioAssumptions; set => SetProperty(ref _scenarioAssumptions, value); }
+    public string ScenarioKpiName { get => _scenarioKpiName; set { if (SetProperty(ref _scenarioKpiName, value)) SaveScenarioKpiCommand.RaiseCanExecuteChanged(); } }
+    public string ScenarioKpiPeriod { get => _scenarioKpiPeriod; set { if (SetProperty(ref _scenarioKpiPeriod, value)) SaveScenarioKpiCommand.RaiseCanExecuteChanged(); } }
+    public string ScenarioKpiValue { get => _scenarioKpiValue; set => SetProperty(ref _scenarioKpiValue, value); }
+    public string ScenarioKpiUnit { get => _scenarioKpiUnit; set => SetProperty(ref _scenarioKpiUnit, value); }
+    public string ScenarioKpiCurrency { get => _scenarioKpiCurrency; set => SetProperty(ref _scenarioKpiCurrency, value); }
+    public string ScenarioKpiSnippetId { get => _scenarioKpiSnippetId; set => SetProperty(ref _scenarioKpiSnippetId, value); }
+    public string ScenarioStatusMessage { get => _scenarioStatusMessage; set => SetProperty(ref _scenarioStatusMessage, value); }
+    public string ScenarioProbabilitySummary => $"Total probability: {Scenarios.Sum(x => x.Probability):0.00}";
+    public bool IsScenarioProbabilityWarning
+    {
+        get
+        {
+            var total = Scenarios.Sum(x => x.Probability);
+            return total < 0.9 || total > 1.1;
+        }
+    }
 
     public string DocumentStatusMessage
     {
@@ -1483,6 +1563,8 @@ public sealed class MainViewModel : ViewModelBase
         HubNotes.Clear();
         HubEvents.Clear();
         HubMetrics.Clear();
+        Scenarios.Clear();
+        ScenarioKpis.Clear();
         AllHubMetrics.Clear();
         HubPrices.Clear();
         LatestClosePrice = "-";
@@ -1495,6 +1577,8 @@ public sealed class MainViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(companyId))
         {
             SelectedHubMetric = null;
+            SelectedScenario = null;
+            SelectedScenarioKpi = null;
             return;
         }
 
@@ -1503,6 +1587,7 @@ public sealed class MainViewModel : ViewModelBase
         var eventsList = await _companyService.GetCompanyEventsAsync(companyId);
         var metrics = await _companyService.GetCompanyMetricsAsync(companyId);
         var runs = await _companyService.GetCompanyAgentRunsAsync(companyId);
+        var scenarios = await _companyService.GetCompanyScenariosAsync(companyId);
         var latestPrice = await _companyService.GetLatestCompanyPriceAsync(companyId);
         var dailyPrices = await _companyService.GetCompanyDailyPricesAsync(companyId, 90);
 
@@ -1542,6 +1627,17 @@ public sealed class MainViewModel : ViewModelBase
             });
         }
 
+        foreach (var item in scenarios)
+        {
+            Scenarios.Add(new ScenarioListItemViewModel
+            {
+                ScenarioId = item.ScenarioId,
+                Name = item.Name,
+                Probability = item.Probability,
+                Assumptions = item.Assumptions ?? string.Empty
+            });
+        }
+
         foreach (var price in dailyPrices)
         {
             HubPrices.Add(new PriceDailyListItemViewModel
@@ -1567,6 +1663,9 @@ public sealed class MainViewModel : ViewModelBase
         SelectedMetricNameFilter = MetricNameOptions.FirstOrDefault() ?? "All";
         ApplyMetricFilters();
         SelectedHubMetric = HubMetrics.FirstOrDefault();
+        SelectedScenario = Scenarios.FirstOrDefault();
+        OnPropertyChanged(nameof(ScenarioProbabilitySummary));
+        OnPropertyChanged(nameof(IsScenarioProbabilityWarning));
 
         foreach (var item in runs)
         {
@@ -1677,6 +1776,133 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         return locator;
+    }
+
+    private async Task SaveScenarioAsync()
+    {
+        if (SelectedHubCompany is null)
+        {
+            return;
+        }
+
+        if (!double.TryParse(ScenarioProbability, NumberStyles.Any, CultureInfo.InvariantCulture, out var probability))
+        {
+            ScenarioStatusMessage = "Scenario probability must be numeric.";
+            return;
+        }
+
+        var request = new ScenarioUpsertRequest
+        {
+            Name = ScenarioName,
+            Probability = probability,
+            Assumptions = ScenarioAssumptions
+        };
+
+        if (SelectedScenario is null)
+        {
+            await _companyService.CreateScenarioAsync(SelectedHubCompany.Id, request);
+            ScenarioStatusMessage = "Scenario created.";
+        }
+        else
+        {
+            await _companyService.UpdateScenarioAsync(SelectedScenario.ScenarioId, request);
+            ScenarioStatusMessage = "Scenario updated.";
+        }
+
+        await LoadCompanyHubAsync(SelectedHubCompany.Id);
+    }
+
+    private async Task DeleteScenarioAsync()
+    {
+        if (SelectedScenario is null || SelectedHubCompany is null)
+        {
+            return;
+        }
+
+        await _companyService.DeleteScenarioAsync(SelectedScenario.ScenarioId);
+        ScenarioStatusMessage = "Scenario deleted.";
+        await LoadCompanyHubAsync(SelectedHubCompany.Id);
+    }
+
+    private async Task LoadScenarioKpisAsync(string? scenarioId)
+    {
+        ScenarioKpis.Clear();
+        if (string.IsNullOrWhiteSpace(scenarioId))
+        {
+            return;
+        }
+
+        var kpis = await _companyService.GetScenarioKpisAsync(scenarioId);
+        foreach (var item in kpis)
+        {
+            ScenarioKpis.Add(new ScenarioKpiListItemViewModel
+            {
+                ScenarioKpiId = item.ScenarioKpiId,
+                KpiName = item.KpiName,
+                Period = item.Period,
+                ValueDisplay = item.Value.ToString(CultureInfo.InvariantCulture),
+                Unit = item.Unit ?? string.Empty,
+                Currency = item.Currency ?? string.Empty,
+                SnippetId = item.SnippetId ?? string.Empty
+            });
+        }
+
+        SelectedScenarioKpi = ScenarioKpis.FirstOrDefault();
+    }
+
+    private async Task SaveScenarioKpiAsync()
+    {
+        if (SelectedScenario is null)
+        {
+            return;
+        }
+
+        if (!double.TryParse(ScenarioKpiValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
+        {
+            ScenarioStatusMessage = "Scenario KPI value must be numeric.";
+            return;
+        }
+
+        var request = new ScenarioKpiUpsertRequest
+        {
+            KpiName = ScenarioKpiName,
+            Period = ScenarioKpiPeriod,
+            Value = value,
+            Unit = ScenarioKpiUnit,
+            Currency = ScenarioKpiCurrency,
+            SnippetId = ScenarioKpiSnippetId
+        };
+
+        if (SelectedScenarioKpi is null)
+        {
+            await _companyService.CreateScenarioKpiAsync(SelectedScenario.ScenarioId, request);
+            ScenarioStatusMessage = "Scenario KPI created.";
+        }
+        else
+        {
+            await _companyService.UpdateScenarioKpiAsync(SelectedScenarioKpi.ScenarioKpiId, request);
+            ScenarioStatusMessage = "Scenario KPI updated.";
+        }
+
+        await LoadScenarioKpisAsync(SelectedScenario.ScenarioId);
+    }
+
+    private async Task DeleteScenarioKpiAsync()
+    {
+        if (SelectedScenarioKpi is null || SelectedScenario is null)
+        {
+            return;
+        }
+
+        await _companyService.DeleteScenarioKpiAsync(SelectedScenarioKpi.ScenarioKpiId);
+        ScenarioStatusMessage = "Scenario KPI deleted.";
+        await LoadScenarioKpisAsync(SelectedScenario.ScenarioId);
+    }
+
+    private void RecalculateScenarioProbability()
+    {
+        OnPropertyChanged(nameof(ScenarioProbabilitySummary));
+        OnPropertyChanged(nameof(IsScenarioProbabilityWarning));
     }
 
     private async Task LoadDocumentDetailsAsync(string? documentId)

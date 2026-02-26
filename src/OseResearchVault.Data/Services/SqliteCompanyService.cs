@@ -307,6 +307,181 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.ExecuteAsync(new CommandDefinition("DELETE FROM metric WHERE id = @Id", new { Id = metricId }, cancellationToken: cancellationToken));
     }
 
+    public async Task<IReadOnlyList<ScenarioRecord>> GetCompanyScenariosAsync(string companyId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<ScenarioRecord>(new CommandDefinition(
+            @"SELECT scenario_id AS ScenarioId,
+                     COALESCE(workspace_id, '') AS WorkspaceId,
+                     company_id AS CompanyId,
+                     name AS Name,
+                     probability AS Probability,
+                     assumptions AS Assumptions,
+                     created_at AS CreatedAt,
+                     updated_at AS UpdatedAt
+                FROM scenario
+               WHERE company_id = @CompanyId
+            ORDER BY created_at, name",
+            new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        return rows.ToList();
+    }
+
+    public async Task<string> CreateScenarioAsync(string companyId, ScenarioUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidateScenario(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+        var scenarioId = Guid.NewGuid().ToString();
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO scenario (scenario_id, workspace_id, company_id, name, probability, assumptions, created_at, updated_at)
+              VALUES (@ScenarioId, @WorkspaceId, @CompanyId, @Name, @Probability, @Assumptions, @Now, @Now)",
+            new
+            {
+                ScenarioId = scenarioId,
+                WorkspaceId = workspaceId,
+                CompanyId = companyId,
+                Name = request.Name.Trim(),
+                request.Probability,
+                Assumptions = string.IsNullOrWhiteSpace(request.Assumptions) ? null : request.Assumptions.Trim(),
+                Now = now
+            }, cancellationToken: cancellationToken));
+
+        return scenarioId;
+    }
+
+    public async Task UpdateScenarioAsync(string scenarioId, ScenarioUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidateScenario(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE scenario
+                 SET name = @Name,
+                     probability = @Probability,
+                     assumptions = @Assumptions,
+                     updated_at = @Now
+               WHERE scenario_id = @ScenarioId",
+            new
+            {
+                ScenarioId = scenarioId,
+                Name = request.Name.Trim(),
+                request.Probability,
+                Assumptions = string.IsNullOrWhiteSpace(request.Assumptions) ? null : request.Assumptions.Trim(),
+                Now = now
+            }, cancellationToken: cancellationToken));
+    }
+
+    public async Task DeleteScenarioAsync(string scenarioId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM scenario WHERE scenario_id = @ScenarioId", new { ScenarioId = scenarioId }, cancellationToken: cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<ScenarioKpiRecord>> GetScenarioKpisAsync(string scenarioId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<ScenarioKpiRecord>(new CommandDefinition(
+            @"SELECT scenario_kpi_id AS ScenarioKpiId,
+                     COALESCE(workspace_id, '') AS WorkspaceId,
+                     scenario_id AS ScenarioId,
+                     kpi_name AS KpiName,
+                     period AS Period,
+                     value AS Value,
+                     unit AS Unit,
+                     currency AS Currency,
+                     snippet_id AS SnippetId,
+                     created_at AS CreatedAt
+                FROM scenario_kpi
+               WHERE scenario_id = @ScenarioId
+            ORDER BY period, kpi_name",
+            new { ScenarioId = scenarioId }, cancellationToken: cancellationToken));
+
+        return rows.ToList();
+    }
+
+    public async Task<string> CreateScenarioKpiAsync(string scenarioId, ScenarioKpiUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidateScenarioKpi(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var now = DateTime.UtcNow.ToString("O");
+        var scenarioKpiId = Guid.NewGuid().ToString();
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO scenario_kpi (scenario_kpi_id, workspace_id, scenario_id, kpi_name, period, value, unit, currency, snippet_id, created_at)
+              VALUES (@ScenarioKpiId, @WorkspaceId, @ScenarioId, @KpiName, @Period, @Value, @Unit, @Currency, @SnippetId, @Now)",
+            new
+            {
+                ScenarioKpiId = scenarioKpiId,
+                WorkspaceId = workspaceId,
+                ScenarioId = scenarioId,
+                KpiName = NormalizeKpiName(request.KpiName),
+                Period = request.Period.Trim(),
+                request.Value,
+                Unit = string.IsNullOrWhiteSpace(request.Unit) ? null : request.Unit.Trim(),
+                Currency = string.IsNullOrWhiteSpace(request.Currency) ? null : request.Currency.Trim(),
+                SnippetId = string.IsNullOrWhiteSpace(request.SnippetId) ? null : request.SnippetId.Trim(),
+                Now = now
+            }, cancellationToken: cancellationToken));
+
+        return scenarioKpiId;
+    }
+
+    public async Task UpdateScenarioKpiAsync(string scenarioKpiId, ScenarioKpiUpsertRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidateScenarioKpi(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE scenario_kpi
+                 SET kpi_name = @KpiName,
+                     period = @Period,
+                     value = @Value,
+                     unit = @Unit,
+                     currency = @Currency,
+                     snippet_id = @SnippetId
+               WHERE scenario_kpi_id = @ScenarioKpiId",
+            new
+            {
+                ScenarioKpiId = scenarioKpiId,
+                KpiName = NormalizeKpiName(request.KpiName),
+                Period = request.Period.Trim(),
+                request.Value,
+                Unit = string.IsNullOrWhiteSpace(request.Unit) ? null : request.Unit.Trim(),
+                Currency = string.IsNullOrWhiteSpace(request.Currency) ? null : request.Currency.Trim(),
+                SnippetId = string.IsNullOrWhiteSpace(request.SnippetId) ? null : request.SnippetId.Trim()
+            }, cancellationToken: cancellationToken));
+    }
+
+    public async Task DeleteScenarioKpiAsync(string scenarioKpiId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM scenario_kpi WHERE scenario_kpi_id = @ScenarioKpiId", new { ScenarioKpiId = scenarioKpiId }, cancellationToken: cancellationToken));
+    }
+
     public async Task<IReadOnlyList<string>> GetCompanyAgentRunsAsync(string companyId, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -604,6 +779,61 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
     private static SqliteConnection OpenConnection(string databasePath)
     {
         return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+    }
+
+    private static void ValidateScenario(ScenarioUpsertRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            throw new InvalidOperationException("Scenario name is required.");
+        }
+
+        if (request.Probability is < 0 or > 1)
+        {
+            throw new InvalidOperationException("Scenario probability must be between 0 and 1.");
+        }
+    }
+
+    private static void ValidateScenarioKpi(ScenarioKpiUpsertRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.KpiName))
+        {
+            throw new InvalidOperationException("KPI name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Period))
+        {
+            throw new InvalidOperationException("KPI period is required.");
+        }
+    }
+
+    private static string NormalizeKpiName(string kpiName)
+    {
+        var trimmed = kpiName.Trim().ToLowerInvariant();
+        if (trimmed.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(trimmed.Length);
+        var previousUnderscore = false;
+        foreach (var ch in trimmed)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                builder.Append(ch);
+                previousUnderscore = false;
+                continue;
+            }
+
+            if (!previousUnderscore)
+            {
+                builder.Append('_');
+                previousUnderscore = true;
+            }
+        }
+
+        return builder.ToString().Trim('_');
     }
 
     private static async Task<string> EnsureWorkspaceAsync(string databasePath, CancellationToken cancellationToken)
