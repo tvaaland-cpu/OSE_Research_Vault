@@ -1,8 +1,12 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using OseResearchVault.Core.Interfaces;
 using Forms = System.Windows.Forms;
 using Microsoft.Win32;
@@ -535,6 +539,184 @@ public partial class MainWindow : Window
             MessageBox.Show(this, $"Failed to import prices:
 {ex.Message}", "Import prices", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private void MainWindow_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
+        {
+            return;
+        }
+
+        if (e.Key == Key.K)
+        {
+            OpenCommandPalette();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.F)
+        {
+            HandleGlobalSearchShortcut();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.N)
+        {
+            _ = OpenNewNoteDialogAsync();
+            e.Handled = true;
+        }
+    }
+
+    private void OpenCommandPalette()
+    {
+        var items = BuildCommandPaletteItems();
+        var dialog = new CommandPaletteDialog(items)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            dialog.SelectedItem?.Execute();
+        }
+    }
+
+    private List<CommandPaletteItem> BuildCommandPaletteItems()
+    {
+        var items = new List<CommandPaletteItem>
+        {
+            CreateNavigateItem("Companies"),
+            CreateNavigateItem("Documents"),
+            CreateNavigateItem("Notes"),
+            CreateNavigateItem("Agents"),
+            CreateNavigateItem("Search"),
+            CreateNavigateItem("Automations"),
+            CreateNavigateItem("Inbox"),
+            new("New Note", "Quick create item", "new note create", () => _ = OpenNewNoteDialogAsync()),
+            new("Import Document", "Quick create item", "import document file", OpenImportDocumentFromPalette),
+            new("Run AskMyVault", "Quick create item", "ask my vault run answer", RunAskMyVaultFromPalette),
+            new("Export Research Pack", "Quick create item", "export research pack", () => _ = ExportResearchPackFromPaletteAsync())
+        };
+
+        foreach (var company in _viewModel.CompanyOptions.Where(x => !string.IsNullOrWhiteSpace(x.Id)))
+        {
+            var companyCopy = company;
+            items.Add(new CommandPaletteItem(
+                $"Open Company: {company.DisplayName}",
+                "Navigate to Company Hub",
+                $"company {company.DisplayName}",
+                () => OpenCompanyFromPalette(companyCopy)));
+        }
+
+        return items;
+    }
+
+    private CommandPaletteItem CreateNavigateItem(string screen)
+    {
+        return new CommandPaletteItem(
+            $"Go to {screen}",
+            "Navigate",
+            $"navigate {screen}",
+            () => NavigateTo(screen));
+    }
+
+    private void NavigateTo(string title)
+    {
+        var item = _viewModel.NavigationItems.FirstOrDefault(x => string.Equals(x.Title, title, StringComparison.OrdinalIgnoreCase));
+        if (item is not null)
+        {
+            _viewModel.SelectedItem = item;
+        }
+    }
+
+    private void OpenCompanyFromPalette(CompanyOptionViewModel company)
+    {
+        NavigateTo("Company Hub");
+        _viewModel.SelectedHubCompany = _viewModel.CompanyOptions.FirstOrDefault(x => string.Equals(x.Id, company.Id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void HandleGlobalSearchShortcut()
+    {
+        if (_viewModel.IsSearchSelected)
+        {
+            GlobalSearchQueryTextBox.Focus();
+            GlobalSearchQueryTextBox.SelectAll();
+            return;
+        }
+
+        NavigateTo("Search");
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            GlobalSearchQueryTextBox.Focus();
+            GlobalSearchQueryTextBox.SelectAll();
+        }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private Task OpenNewNoteDialogAsync()
+    {
+        var scopedCompany = _viewModel.SelectedHubCompany ?? _viewModel.SelectedNoteCompany;
+        var dialog = new NewNoteDialog(_viewModel.CompanyOptions, _viewModel.NoteTypes, scopedCompany)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return Task.CompletedTask;
+        }
+
+        NavigateTo("Notes");
+        _viewModel.NoteTitle = dialog.NoteTitle;
+        _viewModel.NoteContent = dialog.NoteContent;
+        _viewModel.SelectedNoteType = dialog.NoteType;
+        _viewModel.SelectedNoteCompany = dialog.SelectedCompany;
+
+        if (_viewModel.SaveNoteCommand.CanExecute(null))
+        {
+            _viewModel.SaveNoteCommand.Execute(null);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void OpenImportDocumentFromPalette()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Supported files (*.pdf;*.docx;*.txt;*.md)|*.pdf;*.docx;*.txt;*.md|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = true
+        };
+
+        if (dialog.ShowDialog(this) != true || dialog.FileNames.Length == 0)
+        {
+            return;
+        }
+
+        _ = _viewModel.ImportDocumentsAsync(dialog.FileNames);
+    }
+
+    private void RunAskMyVaultFromPalette()
+    {
+        NavigateTo("Agents");
+        if (_viewModel.RunAgentCommand.CanExecute(null))
+        {
+            _viewModel.RunAgentCommand.Execute(null);
+        }
+    }
+
+    private async Task ExportResearchPackFromPaletteAsync()
+    {
+        if (_viewModel.SelectedHubCompany is null)
+        {
+            NavigateTo("Company Hub");
+            MessageBox.Show(this, "Select a company in Company Hub before exporting a research pack.", "Export Research Pack", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        await Dispatcher.InvokeAsync(() => ExportResearchPack_OnClick(this, new RoutedEventArgs()));
     }
 
 

@@ -10,7 +10,8 @@
         Height="800"
         MinWidth="980"
         MinHeight="620"
-        Loaded="MainWindow_OnLoaded">
+        Loaded="MainWindow_OnLoaded"
+        PreviewKeyDown="MainWindow_OnPreviewKeyDown">
     <Grid>
         <Grid.Resources>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
@@ -560,7 +561,7 @@
             <StackPanel Margin="0,0,0,12">
                 <TextBlock Text="Search" FontSize="28" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <TextBox Width="340" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search"/>
+                    <TextBox x:Name="GlobalSearchQueryTextBox" Width="340" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search"/>
                     <Button Content="Search" Margin="8,0,0,0" Command="{Binding ExecuteSearchCommand}"/>
                 </StackPanel>
                 <WrapPanel Margin="0,8,0,0">
