@@ -29,9 +29,17 @@ public sealed class DataQualityServiceTests
             Assert.Single(report.UnlinkedNotes);
             Assert.Single(report.EvidenceGaps);
             Assert.Single(report.SnippetIssues);
+            Assert.Equal(2, report.EnrichmentSuggestions.Count);
 
-            await service.LinkDocumentToCompanyAsync(ids.UnlinkedDocumentId, ids.CompanyId);
-            await service.LinkNoteToCompanyAsync(ids.UnlinkedNoteId, ids.CompanyId);
+            var documentSuggestion = report.EnrichmentSuggestions.Single(s => s.ItemType == "document");
+            Assert.Equal(ids.UnlinkedDocumentId, documentSuggestion.ItemId);
+            Assert.Equal(ids.CompanyId, documentSuggestion.CompanyId);
+
+            var noteSuggestion = report.EnrichmentSuggestions.Single(s => s.ItemType == "note");
+            Assert.Equal(ids.UnlinkedNoteId, noteSuggestion.ItemId);
+
+            await service.ApplyEnrichmentSuggestionAsync(documentSuggestion.ItemType, documentSuggestion.ItemId, documentSuggestion.CompanyId);
+            await service.ApplyEnrichmentSuggestionAsync(noteSuggestion.ItemType, noteSuggestion.ItemId, noteSuggestion.CompanyId);
             await service.ArchiveDuplicateDocumentsAsync(ids.DuplicateHash, ids.KeepDocumentId);
 
             var afterFix = await service.GetReportAsync();
@@ -62,7 +70,7 @@ public sealed class DataQualityServiceTests
         var snippetIssueId = Guid.NewGuid().ToString();
 
         await connection.ExecuteAsync("INSERT INTO workspace (id, name, created_at, updated_at) VALUES (@Id, @Name, @Now, @Now)", new { Id = workspaceId, Name = "Default", Now = now });
-        await connection.ExecuteAsync("INSERT INTO company (id, workspace_id, name, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Name, @Now, @Now)", new { Id = companyId, WorkspaceId = workspaceId, Name = "Acme", Now = now });
+        await connection.ExecuteAsync("INSERT INTO company (id, workspace_id, name, ticker, isin, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Name, @Ticker, @Isin, @Now, @Now)", new { Id = companyId, WorkspaceId = workspaceId, Name = "Acme", Ticker = "NAPA.OL", Isin = "NO0010816924", Now = now });
 
         await connection.ExecuteAsync(@"INSERT INTO document (id, workspace_id, title, content_hash, imported_at, file_path, created_at, updated_at)
                                        VALUES (@Id, @WorkspaceId, @Title, @Hash, @Now, @Path, @Now, @Now)",
@@ -73,8 +81,11 @@ public sealed class DataQualityServiceTests
                 new { Id = unlinkedDocId, WorkspaceId = workspaceId, Title = "Unlinked", Hash = "other-hash", Now = now, Path = "/tmp/c.txt" }
             });
 
-        await connection.ExecuteAsync("INSERT INTO note (id, workspace_id, title, content, note_type, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Title, 'body', 'manual', @Now, @Now)",
-            new { Id = unlinkedNoteId, WorkspaceId = workspaceId, Title = "Unlinked Note", Now = now });
+        await connection.ExecuteAsync("INSERT INTO document_text (id, document_id, content, created_at) VALUES (@Id, @DocumentId, @Content, @Now)",
+            new { Id = Guid.NewGuid().ToString(), DocumentId = unlinkedDocId, Content = "Meeting notes mention NAPA.OL and its guidance.", Now = now });
+
+        await connection.ExecuteAsync("INSERT INTO note (id, workspace_id, title, content, note_type, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Title, @Content, 'manual', @Now, @Now)",
+            new { Id = unlinkedNoteId, WorkspaceId = workspaceId, Title = "Unlinked Note", Content = "NAPA.OL still looks cheap", Now = now });
 
         await connection.ExecuteAsync("INSERT INTO artifact (id, workspace_id, artifact_type, title, created_at, updated_at) VALUES (@Id, @WorkspaceId, 'summary', @Title, @Now, @Now)",
             new { Id = Guid.NewGuid().ToString(), WorkspaceId = workspaceId, Title = "Gap Artifact", Now = now });

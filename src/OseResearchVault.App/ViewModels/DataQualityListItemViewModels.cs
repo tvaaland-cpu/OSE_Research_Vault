@@ -41,3 +41,17 @@ public sealed class DataQualitySnippetIssueViewModel : ViewModelBase
     public string Locator { get; init; } = string.Empty;
     public string ParentReference { get; init; } = string.Empty;
 }
+
+
+public sealed class DataQualityEnrichmentSuggestionViewModel : ViewModelBase
+{
+    public string ItemType { get; init; } = string.Empty;
+    public string ItemId { get; init; } = string.Empty;
+    public string ItemTitle { get; init; } = string.Empty;
+    public string CompanyId { get; init; } = string.Empty;
+    public string CompanyName { get; init; } = string.Empty;
+    public string MatchedTerm { get; init; } = string.Empty;
+    public string MatchReason { get; init; } = string.Empty;
+    public string CreatedAt { get; init; } = string.Empty;
+    public string SuggestionLabel => $"{CompanyName} ({MatchReason}: {MatchedTerm})";
+}
