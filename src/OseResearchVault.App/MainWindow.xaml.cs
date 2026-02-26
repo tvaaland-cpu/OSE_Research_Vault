@@ -17,14 +17,16 @@ public partial class MainWindow : Window
     private readonly IExportService _exportService;
     private readonly INotificationService _notificationService;
     private readonly IInvestmentMemoService _investmentMemoService;
+    private readonly IReviewService _reviewService;
     private readonly IBackupService _backupService;
 
-    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IBackupService backupService)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService, IReviewService reviewService, IBackupService backupService)
     {
         _viewModel = viewModel;
         _exportService = exportService;
         _notificationService = notificationService;
         _investmentMemoService = investmentMemoService;
+        _reviewService = reviewService;
         _backupService = backupService;
         InitializeComponent();
         DataContext = viewModel;
@@ -253,6 +255,17 @@ public partial class MainWindow : Window
     }
 
 
+
+
+    private async void GenerateWeeklyReview_OnClick(object sender, RoutedEventArgs e)
+    {
+        var asOfDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var result = await _reviewService.GenerateWeeklyReviewAsync(string.Empty, asOfDate);
+        await _notificationService.AddNotification("info", "Weekly review generated", $"{result.NoteTitle} created with {result.ImportedDocumentCount} new documents and {result.RecentTradeCount} recent trades.");
+        await _viewModel.RefreshAfterWeeklyReviewAsync();
+
+        MessageBox.Show(this, $"Created note: {result.NoteTitle}", "Weekly review", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 
     private async void GenerateInvestmentMemo_OnClick(object sender, RoutedEventArgs e)
     {
