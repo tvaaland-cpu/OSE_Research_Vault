@@ -237,6 +237,13 @@
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
                                     <TextBox Text="{Binding SelectedRunArtifact.Content, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Height="180" TextWrapping="Wrap"/>
+                                    <Button Content="Save Artifact Output" Width="160" Margin="0,6,0,0" Command="{Binding SaveArtifactCommand}"/>
+                                    <GroupBox Header="Artifact Evidence" Margin="0,10,0,0">
+                                        <StackPanel>
+                                            <Button Content="Create Snippet &amp; Link..." Width="180" Click="CreateSnippetAndLink_OnClick"/>
+                                        </StackPanel>
+                                    </GroupBox>
+                                </StackPanel>
                                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,6">
                                         <Button Content="Save Artifact Output" Width="160" Command="{Binding SaveArtifactCommand}"/>
                                         <Button Content="Link Snippet…" Width="120" Margin="8,0,0,0" Click="LinkArtifactSnippet_OnClick"/>
