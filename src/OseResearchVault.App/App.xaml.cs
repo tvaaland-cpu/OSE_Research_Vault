@@ -2,6 +2,7 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.App.Logging;
+using OseResearchVault.App.Services;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Data.Repositories;
@@ -73,6 +74,7 @@ public partial class App : Application
         services.AddSingleton<ILLMProvider>(sp => sp.GetRequiredService<GeminiLlmProvider>());
 #endif
         services.AddSingleton<ILLMProviderFactory, LlmProviderFactory>();
+        services.AddSingleton<IUserDialogService, MessageBoxDialogService>();
 
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
