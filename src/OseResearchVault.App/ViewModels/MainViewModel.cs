@@ -16,6 +16,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IAutomationTemplateService _automationTemplateService;
     private readonly IAppSettingsService _appSettingsService;
     private readonly IImportInboxWatcher _importInboxWatcher;
     private readonly INotificationService _notificationService;
@@ -84,6 +85,9 @@ public sealed class MainViewModel : ViewModelBase
     private string _metricCurrency = string.Empty;
     private string _metricStatusMessage = "Track company metrics.";
     private string _selectedDocumentWorkspaceId = string.Empty;
+    private string _automationStatusMessage = "Create automations from built-in templates.";
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IAutomationTemplateService automationTemplateService)
     private string _importInboxFolderPath = string.Empty;
     private bool _importInboxEnabled;
 
@@ -123,6 +127,7 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _automationTemplateService = automationTemplateService;
         _appSettingsService = appSettingsService;
         _importInboxWatcher = importInboxWatcher;
         _notificationService = notificationService;
@@ -172,6 +177,8 @@ public sealed class MainViewModel : ViewModelBase
         AgentRuns = [];
         RunSelectableDocuments = [];
         RunArtifacts = [];
+        AutomationTemplates = [];
+        Automations = [];
         ArtifactEvidenceLinks = [];
         DocumentSnippets = [];
         Notifications = [];
@@ -197,6 +204,9 @@ public sealed class MainViewModel : ViewModelBase
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        CreateDailyReviewAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("daily-review"));
+        CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-watchlist-scan"));
+        CreateImportInboxAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("import-inbox-hourly"));
         SaveImportInboxSettingsCommand = new RelayCommand(() => _ = SaveImportInboxSettingsAsync());
 
         _importInboxWatcher.FileImported += OnImportInboxFileImported;
@@ -238,6 +248,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<AgentRunListItemViewModel> AgentRuns { get; }
     public ObservableCollection<DocumentListItemViewModel> RunSelectableDocuments { get; }
     public ObservableCollection<ArtifactListItemViewModel> RunArtifacts { get; }
+    public ObservableCollection<AutomationTemplateListItemViewModel> AutomationTemplates { get; }
+    public ObservableCollection<AutomationListItemViewModel> Automations { get; }
     public ObservableCollection<ArtifactEvidenceLinkListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<ArtifactEvidenceListItemViewModel> ArtifactEvidenceLinks { get; }
     public ObservableCollection<DocumentSnippetListItemViewModel> DocumentSnippets { get; }
@@ -264,6 +276,9 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand CreateDailyReviewAutomationCommand { get; }
+    public RelayCommand CreateWeeklyWatchlistAutomationCommand { get; }
+    public RelayCommand CreateImportInboxAutomationCommand { get; }
     public RelayCommand SaveImportInboxSettingsCommand { get; }
     public RelayCommand RefreshInboxCommand { get; }
     public RelayCommand MarkNotificationReadCommand { get; }
@@ -290,6 +305,7 @@ public sealed class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsCompanyHubSelected));
                 OnPropertyChanged(nameof(IsSearchSelected));
                 OnPropertyChanged(nameof(IsAgentsSelected));
+                OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsSettingsSelected));
                 OnPropertyChanged(nameof(IsInboxSelected));
                 OnPropertyChanged(nameof(IsAutomationsSelected));
@@ -304,6 +320,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompanyHubSelected => IsSelected("Company Hub");
     public bool IsSearchSelected => IsSelected("Search");
     public bool IsAgentsSelected => IsSelected("Agents");
+    public bool IsAutomationsSelected => IsSelected("Automations");
     public bool IsSettingsSelected => IsSelected("Settings");
     public bool IsInboxSelected => IsSelected("Inbox");
     public bool IsAutomationsSelected => IsSelected("Automations");
@@ -714,6 +731,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool ImportInboxEnabled { get => _importInboxEnabled; set => SetProperty(ref _importInboxEnabled, value); }
     public string RunInputSummary { get => _runInputSummary; set => SetProperty(ref _runInputSummary, value); }
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
+    public string AutomationStatusMessage { get => _automationStatusMessage; set => SetProperty(ref _automationStatusMessage, value); }
     public string EvidenceCoverageLabel
     {
         get => _evidenceCoverageLabel;
@@ -781,6 +799,7 @@ public sealed class MainViewModel : ViewModelBase
         await EnsureAskMyVaultAgentAsync();
         await LoadAgentsAsync();
         await LoadAgentRunsAsync();
+        LoadAutomationTemplates();
         await LoadImportInboxSettingsAsync();
         await _importInboxWatcher.ReloadAsync();
     }
@@ -835,6 +854,35 @@ public sealed class MainViewModel : ViewModelBase
         });
     }
 
+
+    private void LoadAutomationTemplates()
+    {
+        AutomationTemplates.Clear();
+        foreach (var template in _automationTemplateService.GetTemplates())
+        {
+            AutomationTemplates.Add(new AutomationTemplateListItemViewModel
+            {
+                Id = template.Id,
+                Name = template.Name,
+                Description = template.Description,
+                ScheduleSummary = template.ScheduleSummary,
+                Payload = template.Payload
+            });
+        }
+    }
+
+    private void CreateAutomationFromTemplate(string templateId)
+    {
+        var automation = _automationTemplateService.CreateAutomationFromTemplate(templateId);
+        Automations.Add(new AutomationListItemViewModel
+        {
+            Name = automation.Name,
+            ScheduleSummary = automation.ScheduleSummary,
+            Payload = automation.Payload
+        });
+
+        AutomationStatusMessage = $"Automation created: {automation.Name}";
+    }
     private async Task SaveSelectedDocumentCompanyAsync()
     {
         if (SelectedDocument is null)
