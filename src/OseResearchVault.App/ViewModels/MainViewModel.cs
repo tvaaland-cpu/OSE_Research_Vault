@@ -2560,12 +2560,22 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        var connectorSettings = new Dictionary<string, string>();
+        if (string.Equals(SelectedConnector.Id, "ose-directory-import", StringComparison.OrdinalIgnoreCase))
+        {
+            connectorSettings["csv_path"] = ConnectorUrl;
+        }
+        else
+        {
+            connectorSettings["url"] = ConnectorUrl;
+        }
+
         var context = new ConnectorContext
         {
             WorkspaceId = workspaceId,
             CompanyId = null,
             HttpClient = _connectorHttpClient,
-            Settings = new Dictionary<string, string> { ["url"] = ConnectorUrl },
+            Settings = connectorSettings,
             Logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance
         };
 
