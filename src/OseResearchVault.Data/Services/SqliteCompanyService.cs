@@ -642,6 +642,153 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.ExecuteAsync(new CommandDefinition("DELETE FROM scenario_kpi WHERE scenario_kpi_id = @ScenarioKpiId", new { ScenarioKpiId = scenarioKpiId }, cancellationToken: cancellationToken));
     }
 
+
+    public async Task<IReadOnlyList<JournalEntryRecord>> GetCompanyJournalEntriesAsync(string companyId, bool reviewDueOnly = false, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var reviewFilterClause = reviewDueOnly
+            ? "AND review_date IS NOT NULL AND date(review_date) <= date('now') AND (review_notes IS NULL OR TRIM(review_notes) = '')"
+            : string.Empty;
+
+        var entries = (await connection.QueryAsync<JournalEntryRow>(new CommandDefinition(
+            $@"SELECT journal_entry_id AS JournalEntryId,
+                      COALESCE(workspace_id, '') AS WorkspaceId,
+                      company_id AS CompanyId,
+                      position_id AS PositionId,
+                      action AS Action,
+                      entry_date AS EntryDate,
+                      rationale AS Rationale,
+                      expected_outcome AS ExpectedOutcome,
+                      review_date AS ReviewDate,
+                      review_notes AS ReviewNotes,
+                      created_at AS CreatedAt
+                 FROM journal_entry
+                WHERE company_id = @CompanyId
+                  {reviewFilterClause}
+             ORDER BY entry_date DESC, created_at DESC",
+            new { CompanyId = companyId }, cancellationToken: cancellationToken))).ToList();
+
+        if (entries.Count == 0)
+        {
+            return [];
+        }
+
+        var entryIds = entries.Select(static x => x.JournalEntryId).ToArray();
+
+        var tradeLinks = await connection.QueryAsync<(string JournalEntryId, string TradeId)>(new CommandDefinition(
+            @"SELECT journal_entry_id AS JournalEntryId,
+                      trade_id AS TradeId
+                 FROM journal_trade
+                WHERE journal_entry_id IN @Ids",
+            new { Ids = entryIds }, cancellationToken: cancellationToken));
+
+        var snippetLinks = await connection.QueryAsync<(string JournalEntryId, string SnippetId)>(new CommandDefinition(
+            @"SELECT journal_entry_id AS JournalEntryId,
+                      snippet_id AS SnippetId
+                 FROM journal_snippet
+                WHERE journal_entry_id IN @Ids",
+            new { Ids = entryIds }, cancellationToken: cancellationToken));
+
+        var tradeLookup = tradeLinks
+            .GroupBy(static x => x.JournalEntryId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(static x => x.TradeId).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var snippetLookup = snippetLinks
+            .GroupBy(static x => x.JournalEntryId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(static x => x.SnippetId).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        return entries.Select(e => new JournalEntryRecord
+        {
+            JournalEntryId = e.JournalEntryId,
+            WorkspaceId = e.WorkspaceId,
+            CompanyId = e.CompanyId,
+            PositionId = e.PositionId,
+            Action = e.Action,
+            EntryDate = e.EntryDate,
+            Rationale = e.Rationale,
+            ExpectedOutcome = e.ExpectedOutcome,
+            ReviewDate = e.ReviewDate,
+            ReviewNotes = e.ReviewNotes,
+            CreatedAt = e.CreatedAt,
+            TradeIds = tradeLookup.TryGetValue(e.JournalEntryId, out var tradeIds) ? tradeIds : [],
+            SnippetIds = snippetLookup.TryGetValue(e.JournalEntryId, out var snippetIds) ? snippetIds : []
+        }).ToList();
+    }
+
+    public async Task<string> CreateJournalEntryAsync(string companyId, JournalEntryUpsertRequest request, IReadOnlyList<string>? tradeIds = null, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default)
+    {
+        ValidateJournalEntry(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        var workspaceId = await EnsureWorkspaceAsync(settings.DatabaseFilePath, cancellationToken);
+        var journalEntryId = Guid.NewGuid().ToString();
+
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"INSERT INTO journal_entry (journal_entry_id, workspace_id, company_id, position_id, action, entry_date, rationale, expected_outcome, review_date, review_notes)
+              VALUES (@JournalEntryId, @WorkspaceId, @CompanyId, @PositionId, @Action, @EntryDate, @Rationale, @ExpectedOutcome, @ReviewDate, @ReviewNotes)",
+            new
+            {
+                JournalEntryId = journalEntryId,
+                WorkspaceId = workspaceId,
+                CompanyId = companyId,
+                PositionId = NormalizeNullable(request.PositionId),
+                Action = request.Action.Trim().ToLowerInvariant(),
+                EntryDate = request.EntryDate.Trim(),
+                Rationale = request.Rationale.Trim(),
+                ExpectedOutcome = NormalizeNullable(request.ExpectedOutcome),
+                ReviewDate = NormalizeNullable(request.ReviewDate),
+                ReviewNotes = NormalizeNullable(request.ReviewNotes)
+            }, cancellationToken: cancellationToken));
+
+        await ReplaceJournalTradesAsync(connection, workspaceId, journalEntryId, tradeIds, cancellationToken);
+        await ReplaceJournalSnippetsAsync(connection, workspaceId, journalEntryId, snippetIds, cancellationToken);
+
+        return journalEntryId;
+    }
+
+    public async Task UpdateJournalEntryAsync(string journalEntryId, JournalEntryUpsertRequest request, IReadOnlyList<string>? tradeIds = null, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default)
+    {
+        ValidateJournalEntry(request);
+
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var workspaceId = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            "SELECT workspace_id FROM journal_entry WHERE journal_entry_id = @JournalEntryId",
+            new { JournalEntryId = journalEntryId }, cancellationToken: cancellationToken));
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE journal_entry
+                 SET position_id = @PositionId,
+                     action = @Action,
+                     entry_date = @EntryDate,
+                     rationale = @Rationale,
+                     expected_outcome = @ExpectedOutcome,
+                     review_date = @ReviewDate,
+                     review_notes = @ReviewNotes
+               WHERE journal_entry_id = @JournalEntryId",
+            new
+            {
+                JournalEntryId = journalEntryId,
+                PositionId = NormalizeNullable(request.PositionId),
+                Action = request.Action.Trim().ToLowerInvariant(),
+                EntryDate = request.EntryDate.Trim(),
+                Rationale = request.Rationale.Trim(),
+                ExpectedOutcome = NormalizeNullable(request.ExpectedOutcome),
+                ReviewDate = NormalizeNullable(request.ReviewDate),
+                ReviewNotes = NormalizeNullable(request.ReviewNotes)
+            }, cancellationToken: cancellationToken));
+
+        await ReplaceJournalTradesAsync(connection, workspaceId, journalEntryId, tradeIds, cancellationToken);
+        await ReplaceJournalSnippetsAsync(connection, workspaceId, journalEntryId, snippetIds, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<string>> GetCompanyAgentRunsAsync(string companyId, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
@@ -941,6 +1088,65 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
     }
 
+
+    private static void ValidateJournalEntry(JournalEntryUpsertRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Action))
+        {
+            throw new InvalidOperationException("Journal action is required.");
+        }
+
+        var action = request.Action.Trim().ToLowerInvariant();
+        if (action is not ("buy" or "sell" or "hold" or "add" or "reduce"))
+        {
+            throw new InvalidOperationException("Journal action must be buy, sell, hold, add, or reduce.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.EntryDate))
+        {
+            throw new InvalidOperationException("Entry date is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Rationale))
+        {
+            throw new InvalidOperationException("Rationale is required.");
+        }
+    }
+
+    private static async Task ReplaceJournalTradesAsync(SqliteConnection connection, string? workspaceId, string journalEntryId, IReadOnlyList<string>? tradeIds, CancellationToken cancellationToken)
+    {
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM journal_trade WHERE journal_entry_id = @JournalEntryId", new { JournalEntryId = journalEntryId }, cancellationToken: cancellationToken));
+
+        if (tradeIds is null || tradeIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var tradeId in tradeIds.Where(static id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO journal_trade (workspace_id, journal_entry_id, trade_id) VALUES (@WorkspaceId, @JournalEntryId, @TradeId)",
+                new { WorkspaceId = workspaceId, JournalEntryId = journalEntryId, TradeId = tradeId }, cancellationToken: cancellationToken));
+        }
+    }
+
+    private static async Task ReplaceJournalSnippetsAsync(SqliteConnection connection, string? workspaceId, string journalEntryId, IReadOnlyList<string>? snippetIds, CancellationToken cancellationToken)
+    {
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM journal_snippet WHERE journal_entry_id = @JournalEntryId", new { JournalEntryId = journalEntryId }, cancellationToken: cancellationToken));
+
+        if (snippetIds is null || snippetIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var snippetId in snippetIds.Where(static id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            await connection.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO journal_snippet (workspace_id, journal_entry_id, snippet_id) VALUES (@WorkspaceId, @JournalEntryId, @SnippetId)",
+                new { WorkspaceId = workspaceId, JournalEntryId = journalEntryId, SnippetId = snippetId }, cancellationToken: cancellationToken));
+        }
+    }
+
     private static void ValidateScenario(ScenarioUpsertRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -1063,6 +1269,22 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         return workspaceId;
     }
 
+
+
+    private sealed class JournalEntryRow
+    {
+        public string JournalEntryId { get; init; } = string.Empty;
+        public string WorkspaceId { get; init; } = string.Empty;
+        public string CompanyId { get; init; } = string.Empty;
+        public string? PositionId { get; init; }
+        public string Action { get; init; } = string.Empty;
+        public string EntryDate { get; init; } = string.Empty;
+        public string Rationale { get; init; } = string.Empty;
+        public string? ExpectedOutcome { get; init; }
+        public string? ReviewDate { get; init; }
+        public string? ReviewNotes { get; init; }
+        public string CreatedAt { get; init; } = string.Empty;
+    }
 
     private sealed class MetricRow
     {
