@@ -208,7 +208,7 @@
                 </Grid>
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <GroupBox Header="Run Agent" Margin="0,0,0,8">
+                    <GroupBox Header="Ask My Vault" Margin="0,0,0,8">
                         <StackPanel>
                             <ComboBox ItemsSource="{Binding CompanyOptions}" SelectedItem="{Binding SelectedRunCompany}" DisplayMemberPath="DisplayName" Margin="0,0,0,6"/>
                             <TextBlock Text="Select local documents to include" FontWeight="SemiBold"/>
@@ -220,7 +220,7 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
                             <TextBox Text="{Binding AgentQuery}" AcceptsReturn="True" Height="60" Margin="0,0,0,6" ToolTip="query"/>
-                            <Button Content="Run (MVP stub)" Width="140" Command="{Binding RunAgentCommand}"/>
+                            <Button Content="Answer" Width="140" Command="{Binding RunAgentCommand}"/>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Grid.Row="1" Header="Lab Notebook">
