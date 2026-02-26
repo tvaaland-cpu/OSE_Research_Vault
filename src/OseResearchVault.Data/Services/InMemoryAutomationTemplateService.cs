@@ -17,11 +17,19 @@ public sealed class InMemoryAutomationTemplateService : IAutomationTemplateServi
         },
         new()
         {
-            Id = "weekly-watchlist-scan",
-            Name = "Weekly watchlist scan",
-            Description = "AskMyVault scan for each watchlist company.",
-            ScheduleSummary = "Weekly on Monday at 08:30",
-            Payload = "Summarize thesis, risks, catalysts, and any new evidence added in the last 7 days."
+            Id = "weekly-review",
+            Name = "Weekly Review",
+            Description = "Generate the weekly review note every Monday morning.",
+            ScheduleSummary = "Weekly on Monday at 08:00",
+            Payload = "{\"job\":\"generate_weekly_review\"}"
+        },
+        new()
+        {
+            Id = "quarterly-review-reminder",
+            Name = "Quarterly Review Reminder",
+            Description = "Notify on the first business day of each quarter to generate per-company quarterly reviews.",
+            ScheduleSummary = "Quarterly on first business day at 08:00",
+            Payload = "{\"job\":\"quarterly_review_reminder\",\"action\":\"generate_per_company_review\"}"
         },
         new()
         {

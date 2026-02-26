@@ -271,7 +271,8 @@ public sealed class MainViewModel : ViewModelBase
         OpenEvidenceGapCommand = new RelayCommand(OpenSelectedEvidenceGap, () => SelectedEvidenceGap is not null);
         ApplySelectedEnrichmentSuggestionCommand = new RelayCommand(() => _ = ApplySelectedEnrichmentSuggestionAsync(), () => SelectedEnrichmentSuggestion is not null);
         CreateDailyReviewAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("daily-review"));
-        CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-watchlist-scan"));
+        CreateWeeklyWatchlistAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("weekly-review"));
+        CreateQuarterlyReviewReminderAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("quarterly-review-reminder"));
         CreateImportInboxAutomationCommand = new RelayCommand(() => CreateAutomationFromTemplate("import-inbox-hourly"));
         SaveImportInboxSettingsCommand = new RelayCommand(() => _ = SaveImportInboxSettingsAsync());
 
@@ -366,6 +367,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand ApplySelectedEnrichmentSuggestionCommand { get; }
     public RelayCommand CreateDailyReviewAutomationCommand { get; }
     public RelayCommand CreateWeeklyWatchlistAutomationCommand { get; }
+    public RelayCommand CreateQuarterlyReviewReminderAutomationCommand { get; }
     public RelayCommand CreateImportInboxAutomationCommand { get; }
     public RelayCommand SaveImportInboxSettingsCommand { get; }
     public RelayCommand RefreshInboxCommand { get; }
