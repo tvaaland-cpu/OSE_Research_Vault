@@ -220,6 +220,7 @@ public sealed class SqliteAgentService(
 
         var rows = await connection.QueryAsync<AgentRunRecord>(new CommandDefinition(
             @"SELECT ar.id,
+                     ar.parent_run_id AS ParentRunId,
                      ar.agent_id AS AgentId,
                      a.name AS AgentName,
                      ar.status,
@@ -279,12 +280,13 @@ public sealed class SqliteAgentService(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO agent_run (id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_profile_id, model_provider, model_name, model_parameters_json, started_at, finished_at)
-              VALUES (@Id, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProfileId, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
+            @"INSERT INTO agent_run (id, parent_run_id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_profile_id, model_provider, model_name, model_parameters_json, started_at, finished_at)
+              VALUES (@Id, @ParentRunId, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProfileId, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
             new
             {
                 Id = runId,
                 request.AgentId,
+                ParentRunId = Clean(request.ParentRunId),
                 WorkspaceId = workspaceId,
                 CompanyId = Clean(request.CompanyId),
                 Query = Clean(request.Query),
@@ -470,11 +472,12 @@ public sealed class SqliteAgentService(
         var runId = Guid.NewGuid().ToString();
         var artifactId = Guid.NewGuid().ToString();
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO agent_run (id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_profile_id, model_provider, model_name, model_parameters_json, started_at, finished_at)
-              VALUES (@Id, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProfileId, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
+            @"INSERT INTO agent_run (id, parent_run_id, agent_id, workspace_id, company_id, status, query_text, selected_document_ids_json, model_profile_id, model_provider, model_name, model_parameters_json, started_at, finished_at)
+              VALUES (@Id, @ParentRunId, @AgentId, @WorkspaceId, @CompanyId, 'running', @Query, @SelectedDocumentIdsJson, @ModelProfileId, @ModelProvider, @ModelName, @ModelParametersJson, @Now, NULL)",
             new
             {
                 Id = runId,
+                ParentRunId = (string?)null,
                 AgentId = askAgentId,
                 WorkspaceId = workspaceId,
                 CompanyId = Clean(request.CompanyId),

@@ -3,6 +3,7 @@ namespace OseResearchVault.Core.Models;
 public sealed class AgentRunRecord
 {
     public string Id { get; init; } = string.Empty;
+    public string? ParentRunId { get; init; }
     public string AgentId { get; init; } = string.Empty;
     public string AgentName { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
