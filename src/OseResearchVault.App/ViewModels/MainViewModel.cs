@@ -2534,6 +2534,49 @@ public sealed class MainViewModel : ViewModelBase
         var trimmed = text.Trim();
         return trimmed.Length <= 200 ? trimmed : $"{trimmed[..200]}…";
     }
+
+    public async Task<string> FetchAnnouncementsForSelectedCompanyAsync(int days, string? manualUrls)
+    {
+        if (SelectedHubCompany is null)
+        {
+            return "Select a company first.";
+        }
+
+        var workspaceId = SelectedSearchWorkspace?.Id ?? WorkspaceOptions.FirstOrDefault()?.Id ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            return "No workspace selected.";
+        }
+
+        var connectorSettings = new Dictionary<string, string>
+        {
+            ["days"] = days.ToString(CultureInfo.InvariantCulture)
+        };
+
+        if (!string.IsNullOrWhiteSpace(manualUrls))
+        {
+            connectorSettings["manual_urls"] = manualUrls;
+        }
+
+        var context = new ConnectorContext
+        {
+            WorkspaceId = workspaceId,
+            CompanyId = SelectedHubCompany.Id,
+            HttpClient = _connectorHttpClient,
+            Settings = connectorSettings,
+            Logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance
+        };
+
+        var result = await _connectorRegistry.RunAsync("announcements-fetch", context);
+        var summary = $"Added {result.SourcesCreated}, skipped {result.SourcesUpdated}, errors {result.Errors.Count}";
+        await _notificationService.AddNotification(result.Errors.Count == 0 ? "info" : "warn", "Announcements fetch finished", summary);
+
+        await LoadCompanyHubAsync(SelectedHubCompany.Id);
+        await LoadDocumentsAsync();
+        await LoadNotificationsAsync();
+        return summary;
+    }
+
     private void LoadConnectors()
     {
         Connectors.Clear();

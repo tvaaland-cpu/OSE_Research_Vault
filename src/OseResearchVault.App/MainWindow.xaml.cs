@@ -336,4 +336,27 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void FetchAnnouncements_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedHubCompany is null)
+        {
+            MessageBox.Show(this, "Select a company first.", "Fetch announcements", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new FetchAnnouncementsDialog
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var summary = await _viewModel.FetchAnnouncementsForSelectedCompanyAsync(dialog.Days, dialog.ManualUrls);
+        MessageBox.Show(this, summary, "Fetch announcements", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+
 }
