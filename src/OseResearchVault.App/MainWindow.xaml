@@ -113,6 +113,7 @@
                                         <TextBlock Text="{Binding Locator}" FontWeight="SemiBold"/>
                                         <TextBlock Text="{Binding CreatedAt}" FontSize="11" Foreground="#FF4A5568"/>
                                         <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                        <Button Content="Create Metric..." Width="130" Margin="0,6,0,0" Click="CreateMetricFromSnippet_OnClick"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -230,10 +231,120 @@
                             <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
                                 <ListBox ItemsSource="{Binding RunArtifacts}" SelectedItem="{Binding SelectedRunArtifact}" DisplayMemberPath="Title" Margin="0,0,6,0"/>
-                                <StackPanel Grid.Column="1">
+                                <Grid Grid.Column="1">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
                                     <TextBox Text="{Binding SelectedRunArtifact.Content, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Height="180" TextWrapping="Wrap"/>
                                     <Button Content="Save Artifact Output" Width="160" Margin="0,6,0,0" Command="{Binding SaveArtifactCommand}"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,6">
+                                        <Ellipse Width="10" Height="10" Margin="0,0,6,0">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="#FFE53E3E"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasEvidenceCoverage}" Value="True">
+                                                            <Setter Property="Fill" Value="#FF38A169"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="{Binding EvidenceCoverageLabel}" FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#FFC53030"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasEvidenceCoverage}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FF2F855A"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding ArtifactEvidenceLinks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,6">
+                                                    <StackPanel>
+                                                        <DockPanel>
+                                                            <TextBlock Text="{Binding DocumentTitle}" FontWeight="SemiBold" DockPanel.Dock="Left"/>
+                                                            <Button Content="Copy citation"
+                                                                    Click="CopyCitation_OnClick"
+                                                                    Tag="{Binding Citation}"
+                                                                    HorizontalAlignment="Right"
+                                                                    Padding="8,2"/>
+                                                        </DockPanel>
+                                                        <TextBlock Text="{Binding Quote}" TextWrapping="Wrap" Foreground="#FF4A5568" Margin="0,4,0,4"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                            <TextBlock Text="Locator: " FontWeight="SemiBold"/>
+                                                            <TextBlock Text="{Binding Locator}"/>
+                                                            <Border Background="#FFFEEBC8" CornerRadius="4" Padding="5,1" Margin="8,0,0,0" Visibility="{Binding HasMissingLocator, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Text="Missing locator" Foreground="#FF975A16" FontSize="11" FontWeight="SemiBold"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock>
+                                                            <Run Text="Snippet ID: " FontWeight="SemiBold"/>
+                                                            <Run Text="{Binding SnippetId}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <GroupBox Header="Artifact Evidence" Margin="0,10,0,0">
+                                        <StackPanel>
+                                            <Button Content="Create Snippet &amp; Link..." Width="180" Click="CreateSnippetAndLink_OnClick"/>
+                                        </StackPanel>
+                                    </GroupBox>
                                 </StackPanel>
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,6">
+                                        <Button Content="Save Artifact Output" Width="160" Command="{Binding SaveArtifactCommand}"/>
+                                        <Button Content="Link Snippet…" Width="120" Margin="8,0,0,0" Click="LinkArtifactSnippet_OnClick"/>
+                                    </StackPanel>
+                                    <GroupBox Grid.Row="2" Header="Evidence">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding ArtifactEvidenceStatusMessage}" Margin="0,0,0,6" Foreground="#FF4A5568"/>
+                                            <ListView Grid.Row="1" ItemsSource="{Binding ArtifactEvidenceLinks}">
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                                                            <Grid>
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto"/>
+                                                                    <RowDefinition Height="Auto"/>
+                                                                </Grid.RowDefinitions>
+                                                                <DockPanel LastChildFill="False">
+                                                                    <TextBlock Text="{Binding SnippetPreview}" TextWrapping="Wrap" Width="420"/>
+                                                                    <Button Content="Remove" Margin="8,0,0,0" Padding="8,2" Click="RemoveEvidenceLink_OnClick" Tag="{Binding EvidenceLinkId}"/>
+                                                                </DockPanel>
+                                                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+                                                                    <TextBlock Text="Locator: " FontWeight="SemiBold"/>
+                                                                    <TextBlock Text="{Binding Locator}" Margin="0,0,12,0"/>
+                                                                    <TextBlock Text="Source: " FontWeight="SemiBold"/>
+                                                                    <TextBlock Margin="0,0,12,0">
+                                                                        <Hyperlink Click="EvidenceDocumentLink_OnClick" Tag="{Binding DocumentId}">
+                                                                            <Run Text="{Binding DocumentTitle}"/>
+                                                                        </Hyperlink>
+                                                                    </TextBlock>
+                                                                    <TextBlock Text="Company: " FontWeight="SemiBold"/>
+                                                                    <TextBlock Text="{Binding CompanyName}"/>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Grid>
+                                    </GroupBox>
+                                </Grid>
                             </Grid>
                         </Grid>
                     </GroupBox>
@@ -366,7 +477,68 @@
                 <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}"/></TabItem>
                 <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}"/></TabItem>
                 <TabItem Header="Events"><ListBox ItemsSource="{Binding HubEvents}"/></TabItem>
-                <TabItem Header="Metrics"><ListBox ItemsSource="{Binding HubMetrics}"/></TabItem>
+                <TabItem Header="Metrics">
+                    <Grid Margin="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBox Width="160" Margin="0,0,8,0" Text="{Binding MetricName, UpdateSourceTrigger=PropertyChanged}" ToolTip="Metric name"/>
+                            <TextBox Width="110" Margin="0,0,8,0" Text="{Binding MetricPeriod, UpdateSourceTrigger=PropertyChanged}" ToolTip="Period (e.g. 2025-Q1)"/>
+                            <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricValue, UpdateSourceTrigger=PropertyChanged}" ToolTip="Value"/>
+                            <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricUnit, UpdateSourceTrigger=PropertyChanged}" ToolTip="Unit"/>
+                            <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricCurrency, UpdateSourceTrigger=PropertyChanged}" ToolTip="Currency"/>
+                            <Button Content="Save Metric" Command="{Binding SaveMetricCommand}"/>
+                        </StackPanel>
+                        <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <ListBox ItemsSource="{Binding HubMetrics}"/>
+                            <TextBlock Grid.Row="1" Margin="0,8,0,0" Text="{Binding MetricStatusMessage}" Foreground="#FF2D3748"/>
+                        </Grid>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Metric" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ComboBox Width="220" ItemsSource="{Binding MetricNameOptions}" SelectedItem="{Binding SelectedMetricNameFilter}"/>
+                            <TextBlock Text="Period" VerticalAlignment="Center" Margin="16,0,8,0"/>
+                            <TextBox Width="220" Text="{Binding MetricPeriodFilter, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding HubMetrics}" SelectedItem="{Binding SelectedHubMetric}" AutoGenerateColumns="False" IsReadOnly="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Metric" Binding="{Binding MetricName}" Width="150"/>
+                                <DataGridTextColumn Header="Period" Binding="{Binding Period}" Width="120"/>
+                                <DataGridTextColumn Header="Value" Binding="{Binding ValueDisplay}" Width="90"/>
+                                <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="90"/>
+                                <DataGridTextColumn Header="Currency" Binding="{Binding Currency}" Width="90"/>
+                                <DataGridTemplateColumn Header="Evidence" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding EvidenceDisplay}" Command="{Binding DataContext.OpenMetricEvidenceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="4,2"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Created at" Binding="{Binding CreatedAt}" Width="130"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+                            <WrapPanel>
+                                <TextBox Width="160" Margin="0,0,6,0" ToolTip="Metric" Text="{Binding MetricEditName}"/>
+                                <TextBox Width="140" Margin="0,0,6,0" ToolTip="Period" Text="{Binding MetricEditPeriod}"/>
+                                <TextBox Width="90" Margin="0,0,6,0" ToolTip="Value" Text="{Binding MetricEditValue}"/>
+                                <TextBox Width="90" Margin="0,0,6,0" ToolTip="Unit" Text="{Binding MetricEditUnit}"/>
+                                <TextBox Width="90" Margin="0,0,6,0" ToolTip="Currency" Text="{Binding MetricEditCurrency}"/>
+                            </WrapPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Content="Edit metric" Command="{Binding SaveMetricCommand}"/>
+                                <Button Content="Delete metric" Margin="8,0,0,0" Command="{Binding DeleteMetricCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
                 <TabItem Header="Agent Runs"><ListBox ItemsSource="{Binding HubAgentRuns}"/></TabItem>
             </TabControl>
         </Grid>

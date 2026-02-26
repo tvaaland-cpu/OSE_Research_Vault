@@ -183,15 +183,126 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         return rows.ToList();
     }
 
-    public async Task<IReadOnlyList<string>> GetCompanyMetricsAsync(string companyId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CompanyMetricRecord>> GetCompanyMetricsAsync(string companyId, CancellationToken cancellationToken = default)
     {
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
-        var rows = await connection.QueryAsync<string>(new CommandDefinition(
-            "SELECT metric_key || ': ' || COALESCE(CAST(metric_value AS TEXT), 'n/a') || ' ' || COALESCE(unit, '') FROM metric WHERE company_id = @CompanyId ORDER BY recorded_at DESC",
+
+        var rows = await connection.QueryAsync<MetricRow>(new CommandDefinition(
+            @"SELECT m.id,
+                     m.metric_key AS MetricName,
+                     TRIM(COALESCE(m.period_start, '') || CASE WHEN m.period_start IS NOT NULL AND m.period_end IS NOT NULL THEN ' - ' ELSE '' END || COALESCE(m.period_end, '')) AS Period,
+                     m.metric_value AS Value,
+                     m.unit,
+                     m.currency,
+                     m.snippet_id AS SnippetId,
+                     s.document_id AS DocumentId,
+                     d.title AS DocumentTitle,
+                     COALESCE(s.context, '') AS Locator,
+                     src.name AS SourceTitle,
+                     s.quote_text AS SnippetText,
+                     m.created_at AS CreatedAt
+                FROM metric m
+                LEFT JOIN snippet s ON s.id = m.snippet_id
+                LEFT JOIN document d ON d.id = s.document_id
+                LEFT JOIN source src ON src.id = s.source_id
+               WHERE m.company_id = @CompanyId
+            ORDER BY m.recorded_at DESC",
             new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
+        return rows.Select(static row => new CompanyMetricRecord
+        {
+            Id = row.Id,
+            MetricName = row.MetricName,
+            Period = row.Period,
+            Value = row.Value,
+            Unit = row.Unit,
+            Currency = row.Currency,
+            SnippetId = row.SnippetId,
+            DocumentId = row.DocumentId,
+            DocumentTitle = row.DocumentTitle,
+            Locator = row.Locator,
+            SourceTitle = row.SourceTitle,
+            SnippetText = row.SnippetText,
+            CreatedAt = row.CreatedAt
+        }).ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> GetCompanyMetricNamesAsync(string companyId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var rows = await connection.QueryAsync<string>(new CommandDefinition(
+            "SELECT metric_key || ' [' || COALESCE(period_end, 'n/a') || ']: ' || COALESCE(CAST(metric_value AS TEXT), 'n/a') || ' ' || COALESCE(unit, '') FROM metric WHERE company_id = @CompanyId ORDER BY recorded_at DESC",
+            @"SELECT DISTINCT metric_key
+                FROM metric
+               WHERE company_id = @CompanyId
+                 AND metric_key IS NOT NULL
+                 AND TRIM(metric_key) <> ''
+            ORDER BY metric_key",
+            @"SELECT metric_key
+                     || CASE WHEN COALESCE(period_label, '') = '' THEN '' ELSE ' (' || period_label || ')' END
+                     || ': '
+                     || COALESCE(CAST(metric_value AS TEXT), 'n/a')
+                     || CASE WHEN COALESCE(unit, '') = '' THEN '' ELSE ' ' || unit END
+                     || CASE WHEN COALESCE(currency, '') = '' THEN '' ELSE ' [' || currency || ']' END
+                FROM metric
+               WHERE company_id = @CompanyId
+            ORDER BY recorded_at DESC",
+            new { CompanyId = companyId }, cancellationToken: cancellationToken));
+
         return rows.ToList();
+    }
+
+    public async Task UpdateCompanyMetricAsync(string metricId, CompanyMetricUpdateRequest request, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+
+        var now = DateTime.UtcNow.ToString("O");
+        var periodStart = request.Period;
+        var periodEnd = (string?)null;
+
+        if (!string.IsNullOrWhiteSpace(request.Period) && request.Period.Contains('-', StringComparison.Ordinal))
+        {
+            var parts = request.Period.Split('-', 2, StringSplitOptions.TrimEntries);
+            periodStart = parts[0];
+            periodEnd = parts.Length > 1 ? parts[1] : null;
+        }
+
+        await connection.ExecuteAsync(new CommandDefinition(
+            @"UPDATE metric
+                 SET metric_key = @MetricName,
+                     period_start = @PeriodStart,
+                     period_end = @PeriodEnd,
+                     metric_value = @Value,
+                     unit = @Unit,
+                     currency = @Currency,
+                     recorded_at = @Now
+               WHERE id = @Id",
+            new
+            {
+                Id = metricId,
+                request.MetricName,
+                PeriodStart = string.IsNullOrWhiteSpace(periodStart) ? null : periodStart.Trim(),
+                PeriodEnd = string.IsNullOrWhiteSpace(periodEnd) ? null : periodEnd.Trim(),
+                request.Value,
+                Unit = string.IsNullOrWhiteSpace(request.Unit) ? null : request.Unit.Trim(),
+                Currency = string.IsNullOrWhiteSpace(request.Currency) ? null : request.Currency.Trim(),
+                Now = now
+            }, cancellationToken: cancellationToken));
+    }
+
+    public async Task DeleteCompanyMetricAsync(string metricId, CancellationToken cancellationToken = default)
+    {
+        var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
+        await using var connection = OpenConnection(settings.DatabaseFilePath);
+        await connection.OpenAsync(cancellationToken);
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM metric WHERE id = @Id", new { Id = metricId }, cancellationToken: cancellationToken));
     }
 
     public async Task<IReadOnlyList<string>> GetCompanyAgentRunsAsync(string companyId, CancellationToken cancellationToken = default)
@@ -271,6 +382,24 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
             new { Id = workspaceId, Name = "Default Workspace", Description = "Auto-created workspace", Now = now }, cancellationToken: cancellationToken));
 
         return workspaceId;
+    }
+
+
+    private sealed class MetricRow
+    {
+        public string Id { get; init; } = string.Empty;
+        public string MetricName { get; init; } = string.Empty;
+        public string Period { get; init; } = string.Empty;
+        public double? Value { get; init; }
+        public string? Unit { get; init; }
+        public string? Currency { get; init; }
+        public string? SnippetId { get; init; }
+        public string? DocumentId { get; init; }
+        public string? DocumentTitle { get; init; }
+        public string? Locator { get; init; }
+        public string? SourceTitle { get; init; }
+        public string? SnippetText { get; init; }
+        public string CreatedAt { get; init; } = string.Empty;
     }
 
     private sealed class CompanyRow
