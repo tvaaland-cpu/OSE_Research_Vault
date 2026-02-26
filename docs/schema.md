@@ -28,6 +28,7 @@ All primary tables use `id TEXT PRIMARY KEY` with a SQLite-generated GUID-style 
 - `event`: belongs to a `workspace`; optional links to `company` and `position`.
 - `metric`: belongs to a `workspace`; optional links to `company` and `position`.
 - `price_daily`: belongs to a `workspace`; required `company` and daily close values unique on `(workspace_id, company_id, price_date)`.
+- `catalyst`: belongs to a `company`; tracks expected date window, status (`open`/`done`/`invalidated`), impact (`low`/`med`/`high`), and optional notes.
 
 ## Tag join tables
 
@@ -36,6 +37,7 @@ All primary tables use `id TEXT PRIMARY KEY` with a SQLite-generated GUID-style 
 - `artifact_tag(artifact_id, tag_id)`
 - `document_tag(document_id, tag_id)`
 - `company_tag(company_id, tag_id)`
+- `catalyst_snippet(catalyst_id, snippet_id)`
 
 All join tables use composite primary keys and cascade deletes from both sides.
 

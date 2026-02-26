@@ -18,6 +18,10 @@ public interface ICompanyService
     Task UpdateCompanyMetricAsync(string metricId, CompanyMetricUpdateRequest request, CancellationToken cancellationToken = default);
     Task DeleteCompanyMetricAsync(string metricId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ScenarioRecord>> GetCompanyScenariosAsync(string companyId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CatalystRecord>> GetCompanyCatalystsAsync(string companyId, CancellationToken cancellationToken = default);
+    Task<string> CreateCatalystAsync(string companyId, CatalystUpsertRequest request, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default);
+    Task UpdateCatalystAsync(string catalystId, CatalystUpsertRequest request, IReadOnlyList<string>? snippetIds = null, CancellationToken cancellationToken = default);
+    Task DeleteCatalystAsync(string catalystId, CancellationToken cancellationToken = default);
     Task<string> CreateScenarioAsync(string companyId, ScenarioUpsertRequest request, CancellationToken cancellationToken = default);
     Task UpdateScenarioAsync(string scenarioId, ScenarioUpsertRequest request, CancellationToken cancellationToken = default);
     Task DeleteScenarioAsync(string scenarioId, CancellationToken cancellationToken = default);
