@@ -14,12 +14,14 @@ public partial class MainWindow : Window
     private readonly MainViewModel _viewModel;
     private readonly IExportService _exportService;
     private readonly INotificationService _notificationService;
+    private readonly IInvestmentMemoService _investmentMemoService;
 
-    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService)
+    public MainWindow(MainViewModel viewModel, IExportService exportService, INotificationService notificationService, IInvestmentMemoService investmentMemoService)
     {
         _viewModel = viewModel;
         _exportService = exportService;
         _notificationService = notificationService;
+        _investmentMemoService = investmentMemoService;
         InitializeComponent();
         DataContext = viewModel;
         _viewModel.AutomationRequested += ViewModelOnAutomationRequested;
@@ -246,6 +248,26 @@ public partial class MainWindow : Window
         _viewModel.OpenDocumentDetails(documentId);
     }
 
+
+
+    private async void GenerateInvestmentMemo_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedHubCompany is null)
+        {
+            MessageBox.Show(this, "Select a company first.", "Investment Memo", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = await _investmentMemoService.GenerateInvestmentMemoAsync(_viewModel.SelectedHubCompany.Id, _viewModel.SelectedHubCompany.DisplayName);
+        await _viewModel.RefreshAfterInvestmentMemoAsync(_viewModel.SelectedHubCompany.Id);
+
+        var message = result.CitationsDetected
+            ? "Investment memo note created with citations."
+            : "Investment memo note created. No citations detected.";
+
+        _viewModel.InvestmentMemoStatusMessage = result.CitationsDetected ? "Citations detected" : "No citations detected";
+        MessageBox.Show(this, message, "Investment Memo", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 
     private async void ExportResearchPack_OnClick(object sender, RoutedEventArgs e)
     {
