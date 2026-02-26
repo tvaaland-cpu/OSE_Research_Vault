@@ -242,6 +242,66 @@
         </Grid>
 
 
+
+        <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsAskMyVaultSelected, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,12">
+                <TextBlock Text="Ask My Vault" FontSize="28" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding AskVaultStatusMessage}" Margin="0,6,0,0" Foreground="#FF2D3748" />
+            </StackPanel>
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="340"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Question" FontWeight="SemiBold"/>
+                    <TextBox Margin="0,6,0,8" Height="90" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding AskVaultQuery, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="Scope" FontWeight="SemiBold"/>
+                    <ComboBox Margin="0,6,0,8" ItemsSource="{Binding NoteFilterCompanies}" SelectedItem="{Binding SelectedAskVaultCompany}" DisplayMemberPath="DisplayName"/>
+                    <Button Content="Retrieve" Width="120" Command="{Binding RetrieveAskVaultCommand}"/>
+                </StackPanel>
+                <TabControl Grid.Column="2">
+                    <TabItem Header="Context">
+                        <Grid>
+                            <Grid.Resources>
+                                <CollectionViewSource x:Key="GroupedAskVaultContext" Source="{Binding AskVaultContextItems}">
+                                    <CollectionViewSource.GroupDescriptions>
+                                        <PropertyGroupDescription PropertyName="ResultType"/>
+                                    </CollectionViewSource.GroupDescriptions>
+                                </CollectionViewSource>
+                            </Grid.Resources>
+                            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <ListView ItemsSource="{Binding Source={StaticResource GroupedAskVaultContext}}" SelectedItem="{Binding SelectedAskVaultContextItem}">
+                                <ListView.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" Margin="0,8,0,4"/>
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </ListView.GroupStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#FFE2E8F0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Excerpt}" TextWrapping="Wrap" Margin="0,2,0,2" Foreground="#FF4A5568"/>
+                                                <TextBlock Text="{Binding Citation}" Foreground="#FF2B6CB0" FontFamily="Consolas"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <Button Grid.Row="1" Content="Open Selected Context" HorizontalAlignment="Left" Margin="0,8,0,0" Command="{Binding OpenAskVaultContextItemCommand}"/>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Prompt">
+                        <TextBox Margin="8" Text="{Binding AskVaultPrompt}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Grid>
+
+
         <Grid Grid.Column="1" Margin="20" Visibility="{Binding IsSearchSelected, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
             <StackPanel Margin="0,0,0,12">
@@ -322,6 +382,7 @@
                         <DataTrigger Binding="{Binding IsCompanyHubSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsSearchSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                         <DataTrigger Binding="{Binding IsAgentsSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                        <DataTrigger Binding="{Binding IsAskMyVaultSelected}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
                     </Style.Triggers>
                 </Style>
             </Grid.Style>
