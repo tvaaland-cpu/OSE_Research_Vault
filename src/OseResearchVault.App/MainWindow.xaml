@@ -231,6 +231,7 @@
                         <Button Content="New" Command="{Binding NewNoteCommand}"/>
                         <Button Content="Save" Margin="8,0,0,0" Command="{Binding SaveNoteCommand}"/>
                         <Button Content="Delete" Margin="8,0,0,0" Command="{Binding DeleteNoteCommand}"/>
+                        <Button Content="Publish…" Margin="8,0,0,0" Click="PublishMemo_OnClick"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>
