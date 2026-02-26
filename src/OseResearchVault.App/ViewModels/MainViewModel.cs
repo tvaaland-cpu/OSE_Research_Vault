@@ -5,6 +5,7 @@ using System.Windows;
 using OseResearchVault.App.Services;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
+using OseResearchVault.Data.Services;
 
 namespace OseResearchVault.App.ViewModels;
 
@@ -83,6 +84,10 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _runToolCallsSummary = "(empty for MVP)";
     private string _runContextJson = string.Empty;
     private string _runPromptText = string.Empty;
+    private ModelProfileListItemViewModel? _selectedRerunModelProfile;
+    private string _runDiffSummary = "Re-run a run to compare answer and evidence coverage.";
+    private string _runDiffText = string.Empty;
+    private readonly RunDiffService _runDiffService = new();
     private string _metricName = string.Empty;
     private string _metricPeriod = string.Empty;
     private string _metricValue = string.Empty;
@@ -266,6 +271,7 @@ public sealed partial class MainViewModel : ViewModelBase
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync());
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => !string.IsNullOrWhiteSpace(AgentQuery));
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        RerunAgentCommand = new RelayCommand(() => _ = RerunSelectedRunAsync(), () => SelectedAgentRun is not null);
         RefreshDataQualityCommand = new RelayCommand(() => _ = LoadDataQualityReportAsync());
         LinkSelectedUnlinkedDocumentCommand = new RelayCommand(() => _ = LinkSelectedUnlinkedDocumentAsync(), () => SelectedUnlinkedDocument is not null && SelectedQualityCompany is not null);
         LinkSelectedUnlinkedNoteCommand = new RelayCommand(() => _ = LinkSelectedUnlinkedNoteAsync(), () => SelectedUnlinkedNote is not null && SelectedQualityCompany is not null);
@@ -361,6 +367,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand RerunAgentCommand { get; }
     public RelayCommand RefreshDataQualityCommand { get; }
     public RelayCommand LinkSelectedUnlinkedDocumentCommand { get; }
     public RelayCommand LinkSelectedUnlinkedNoteCommand { get; }
@@ -878,6 +885,7 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedAgentRun, value))
             {
+                RerunAgentCommand.RaiseCanExecuteChanged();
                 _ = LoadRunNotebookAsync(value);
             }
         }
@@ -898,6 +906,12 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     public CompanyOptionViewModel? SelectedRunCompany { get => _selectedRunCompany; set => SetProperty(ref _selectedRunCompany, value); }
+
+    public ModelProfileListItemViewModel? SelectedRerunModelProfile
+    {
+        get => _selectedRerunModelProfile;
+        set => SetProperty(ref _selectedRerunModelProfile, value);
+    }
 
     public NotificationListItemViewModel? SelectedNotification
     {
@@ -1021,6 +1035,8 @@ public sealed partial class MainViewModel : ViewModelBase
     public string RunToolCallsSummary { get => _runToolCallsSummary; set => SetProperty(ref _runToolCallsSummary, value); }
     public string RunContextJson { get => _runContextJson; set => SetProperty(ref _runContextJson, value); }
     public string RunPromptText { get => _runPromptText; set => SetProperty(ref _runPromptText, value); }
+    public string RunDiffSummary { get => _runDiffSummary; set => SetProperty(ref _runDiffSummary, value); }
+    public string RunDiffText { get => _runDiffText; set => SetProperty(ref _runDiffText, value); }
     public string AutomationStatusMessage { get => _automationStatusMessage; set => SetProperty(ref _automationStatusMessage, value); }
     public string EvidenceCoverageLabel
     {
@@ -2117,13 +2133,16 @@ public sealed partial class MainViewModel : ViewModelBase
             AgentRuns.Add(new AgentRunListItemViewModel
             {
                 Id = run.Id,
+                ParentRunId = run.ParentRunId ?? string.Empty,
+                AgentId = run.AgentId,
                 AgentName = run.AgentName,
                 CompanyId = run.CompanyId ?? string.Empty,
                 CompanyName = run.CompanyName ?? string.Empty,
                 Query = run.Query,
                 Status = run.Status,
                 StartedAt = FormatDate(run.StartedAt),
-                SelectedDocumentIdsJson = run.SelectedDocumentIdsJson
+                SelectedDocumentIdsJson = run.SelectedDocumentIdsJson,
+                ModelProfileId = run.ModelProfileId ?? string.Empty
             });
         }
     }
@@ -2292,6 +2311,9 @@ public sealed partial class MainViewModel : ViewModelBase
             RunContextJson = string.Empty;
             RunPromptText = string.Empty;
             ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
+            SelectedRerunModelProfile = null;
+            RunDiffSummary = "Re-run a run to compare answer and evidence coverage.";
+            RunDiffText = string.Empty;
             return;
         }
 
@@ -2305,6 +2327,9 @@ public sealed partial class MainViewModel : ViewModelBase
         var runContext = await _agentService.GetRunContextAsync(run.Id);
         RunContextJson = runContext?.ContextJson ?? "(No stored context for this run.)";
         RunPromptText = runContext?.PromptText ?? "(No stored prompt for this run.)";
+        SelectedRerunModelProfile = ModelProfiles.FirstOrDefault(x => x.ModelProfileId == run.ModelProfileId)
+            ?? ModelProfiles.FirstOrDefault(x => x.IsDefault)
+            ?? ModelProfiles.FirstOrDefault();
 
         var artifacts = await _agentService.GetArtifactsAsync(run.Id);
         foreach (var artifact in artifacts)
@@ -2348,6 +2373,49 @@ public sealed partial class MainViewModel : ViewModelBase
             ? "1 evidence link"
             : $"{ArtifactEvidenceLinks.Count} evidence links";
         OnPropertyChanged(nameof(HasEvidenceCoverage));
+    }
+
+    private async Task RerunSelectedRunAsync()
+    {
+        if (SelectedAgentRun is null)
+        {
+            return;
+        }
+
+        var parentRun = SelectedAgentRun;
+        var selectedDocIds = JsonSerializer.Deserialize<List<string>>(parentRun.SelectedDocumentIdsJson) ?? [];
+        var runId = await _agentService.CreateRunAsync(new AgentRunRequest
+        {
+            AgentId = parentRun.AgentId,
+            ParentRunId = parentRun.Id,
+            CompanyId = string.IsNullOrWhiteSpace(parentRun.CompanyId) ? null : parentRun.CompanyId,
+            Query = parentRun.Query,
+            SelectedDocumentIds = selectedDocIds,
+            ModelProfileId = SelectedRerunModelProfile?.ModelProfileId
+        });
+
+        await LoadAgentRunsAsync();
+        var childRun = AgentRuns.FirstOrDefault(x => x.Id == runId);
+        var originalArtifacts = await _agentService.GetArtifactsAsync(parentRun.Id);
+        var rerunArtifacts = await _agentService.GetArtifactsAsync(runId);
+        var originalArtifact = originalArtifacts.FirstOrDefault();
+        var rerunArtifact = rerunArtifacts.FirstOrDefault();
+
+        var originalLinks = originalArtifact is null
+            ? Array.Empty<EvidenceLink>()
+            : await _evidenceService.ListEvidenceLinksByArtifactAsync(originalArtifact.Id);
+        var rerunLinks = rerunArtifact is null
+            ? Array.Empty<EvidenceLink>()
+            : await _evidenceService.ListEvidenceLinksByArtifactAsync(rerunArtifact.Id);
+
+        var diffResult = _runDiffService.Compare(originalArtifact?.Content, rerunArtifact?.Content, originalLinks, rerunLinks);
+        RunDiffSummary = $"Evidence links: {diffResult.OriginalEvidence.LinkCount} → {diffResult.RerunEvidence.LinkCount}; " +
+                         $"documents: {diffResult.OriginalEvidence.UniqueDocumentCount} → {diffResult.RerunEvidence.UniqueDocumentCount}; " +
+                         $"snippets: {diffResult.OriginalEvidence.SnippetCount} → {diffResult.RerunEvidence.SnippetCount}";
+        RunDiffText = diffResult.TextDiff;
+
+        AgentStatusMessage = "Run re-executed and diff generated.";
+        SelectedAgentRun = childRun;
     }
 
     private async Task SaveArtifactAsync()
@@ -2538,6 +2606,9 @@ public sealed partial class MainViewModel : ViewModelBase
         if (SelectedRunArtifact is null)
         {
             ArtifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
+            SelectedRerunModelProfile = null;
+            RunDiffSummary = "Re-run a run to compare answer and evidence coverage.";
+            RunDiffText = string.Empty;
             return;
         }
 

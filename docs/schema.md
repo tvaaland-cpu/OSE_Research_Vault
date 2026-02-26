@@ -20,7 +20,7 @@ All primary tables use `id TEXT PRIMARY KEY` with a SQLite-generated GUID-style 
 - `note`: belongs to a `workspace`; optional links to `company` and `position`.
 - `snippet`: belongs to a `workspace`; optional links to `document`, `note`, and `source`.
 - `agent`: belongs to a `workspace`.
-- `agent_run`: belongs to an `agent` and `workspace`.
+- `agent_run`: belongs to an `agent` and `workspace`; optional `parent_run_id` links reruns to an original run.
 - `tool_call`: belongs to an `agent_run`.
 - `artifact`: belongs to a `workspace`; optional link to `agent_run`.
 - `evidence_link`: polymorphic linkage between entities inside a `workspace`.
