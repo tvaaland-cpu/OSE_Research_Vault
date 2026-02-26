@@ -115,7 +115,8 @@ public sealed class WorkspaceServiceTests
 
     private sealed class NoOpDatabaseInitializer : IDatabaseInitializer
     {
-        public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<int> InitializeAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+        public Task<bool> HasPendingMigrationsAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 
     private sealed class NoOpAutomationScheduler : IAutomationScheduler

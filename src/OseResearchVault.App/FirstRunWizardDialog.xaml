@@ -1,0 +1,67 @@
+<Window x:Class="OseResearchVault.App.FirstRunWizardDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Welcome to OSE Research Vault" Height="620" Width="760" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="First-run setup" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <TextBlock Text="Set up your workspace, vault, and optional inbox/model settings." Foreground="DimGray" Margin="0,0,0,12"/>
+
+                <GroupBox Header="1) Create or select workspace" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <DataGrid x:Name="WorkspaceGrid" Height="140" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Margin="0,0,0,10">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="180"/>
+                                <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Text="Create new workspace (optional)" FontWeight="SemiBold"/>
+                        <TextBlock Text="Name" Margin="0,6,0,0"/>
+                        <TextBox x:Name="WorkspaceNameTextBox"/>
+                        <TextBlock Text="Folder" Margin="0,6,0,0"/>
+                        <DockPanel>
+                            <TextBox x:Name="WorkspaceFolderTextBox" DockPanel.Dock="Left" Margin="0,0,8,0" MinWidth="500"/>
+                            <Button Content="Browse…" Width="90" Click="BrowseWorkspaceFolder_OnClick"/>
+                        </DockPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="2) Choose vault folder" Padding="10" Margin="0,0,0,12">
+                    <DockPanel>
+                        <TextBox x:Name="VaultFolderTextBox" DockPanel.Dock="Left" Margin="0,0,8,0" MinWidth="560"/>
+                        <Button Content="Browse…" Width="90" Click="BrowseVaultFolder_OnClick"/>
+                    </DockPanel>
+                </GroupBox>
+
+                <GroupBox Header="3) Optional import inbox" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <CheckBox x:Name="EnableInboxCheckBox" Content="Enable import inbox watcher" Margin="0,0,0,6"/>
+                        <DockPanel>
+                            <TextBox x:Name="InboxFolderTextBox" DockPanel.Dock="Left" Margin="0,0,8,0" MinWidth="560"/>
+                            <Button Content="Browse…" Width="90" Click="BrowseInboxFolder_OnClick"/>
+                        </DockPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="4) Optional default model profile" Padding="10">
+                    <StackPanel>
+                        <TextBlock Text="Choose an existing default model profile (if configured)." Foreground="DimGray" Margin="0,0,0,6"/>
+                        <ComboBox x:Name="ModelProfileComboBox" DisplayMemberPath="Name" SelectedValuePath="ModelProfileId"/>
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Width="100" Margin="0,0,8,0" Click="Cancel_OnClick"/>
+            <Button Content="Finish" Width="130" Click="Finish_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>
