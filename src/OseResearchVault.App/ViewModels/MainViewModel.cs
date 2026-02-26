@@ -15,6 +15,8 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IEvidenceService _evidenceService;
     private readonly ISearchService _searchService;
     private readonly IAgentService _agentService;
+    private readonly IMetricService _metricService;
+    private readonly IMetricConflictDialogService _metricConflictDialogService;
     private readonly IUserDialogService _dialogService;
     private readonly IMetricService _metricService;
     private NavigationItem _selectedItem;
@@ -64,6 +66,15 @@ public sealed class MainViewModel : ViewModelBase
     private string _agentStatusMessage = "Create reusable agent templates and run history.";
     private string _runInputSummary = "Select a run to view notebook details.";
     private string _runToolCallsSummary = "(empty for MVP)";
+    private string _metricName = string.Empty;
+    private string _metricPeriod = string.Empty;
+    private string _metricValue = string.Empty;
+    private string _metricUnit = string.Empty;
+    private string _metricCurrency = string.Empty;
+    private string _metricStatusMessage = "Track company metrics.";
+    private string _selectedDocumentWorkspaceId = string.Empty;
+
+    public MainViewModel(IDocumentImportService documentImportService, ICompanyService companyService, INoteService noteService, IEvidenceService evidenceService, ISearchService searchService, IAgentService agentService, IMetricService metricService, IMetricConflictDialogService metricConflictDialogService)
     private string _evidenceCoverageLabel = "0 evidence links";
     private string _artifactEvidenceStatusMessage = "Select an artifact to view linked evidence.";
     private string _selectedDocumentWorkspaceId = string.Empty;
@@ -86,6 +97,8 @@ public sealed class MainViewModel : ViewModelBase
         _evidenceService = evidenceService;
         _searchService = searchService;
         _agentService = agentService;
+        _metricService = metricService;
+        _metricConflictDialogService = metricConflictDialogService;
         _dialogService = dialogService;
         _metricService = metricService;
 
@@ -143,6 +156,7 @@ public sealed class MainViewModel : ViewModelBase
         NewAgentTemplateCommand = new RelayCommand(ClearAgentTemplateForm);
         RunAgentCommand = new RelayCommand(() => _ = RunAgentAsync(), () => SelectedAgentTemplate is not null);
         SaveArtifactCommand = new RelayCommand(() => _ = SaveArtifactAsync(), () => SelectedRunArtifact is not null);
+        SaveMetricCommand = new RelayCommand(() => _ = SaveMetricAsync(), () => SelectedHubCompany is not null && !string.IsNullOrWhiteSpace(MetricName) && !string.IsNullOrWhiteSpace(MetricPeriod));
         OpenMetricEvidenceCommand = new RelayCommand(param => _ = OpenMetricEvidenceAsync(param as CompanyMetricListItemViewModel));
         SaveMetricCommand = new RelayCommand(() => _ = SaveSelectedMetricAsync(), () => SelectedHubMetric is not null && !string.IsNullOrWhiteSpace(MetricEditName));
         DeleteMetricCommand = new RelayCommand(() => _ = DeleteSelectedMetricAsync(), () => SelectedHubMetric is not null);
@@ -193,6 +207,7 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand NewAgentTemplateCommand { get; }
     public RelayCommand RunAgentCommand { get; }
     public RelayCommand SaveArtifactCommand { get; }
+    public RelayCommand SaveMetricCommand { get; }
     public RelayCommand OpenMetricEvidenceCommand { get; }
     public RelayCommand SaveMetricCommand { get; }
     public RelayCommand DeleteMetricCommand { get; }
@@ -283,11 +298,40 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedHubCompany, value))
             {
+                SaveMetricCommand.RaiseCanExecuteChanged();
                 _ = LoadCompanyHubAsync(value?.Id);
             }
         }
     }
 
+    public string MetricName
+    {
+        get => _metricName;
+        set
+        {
+            if (SetProperty(ref _metricName, value))
+            {
+                SaveMetricCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string MetricPeriod
+    {
+        get => _metricPeriod;
+        set
+        {
+            if (SetProperty(ref _metricPeriod, value))
+            {
+                SaveMetricCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string MetricValue { get => _metricValue; set => SetProperty(ref _metricValue, value); }
+    public string MetricUnit { get => _metricUnit; set => SetProperty(ref _metricUnit, value); }
+    public string MetricCurrency { get => _metricCurrency; set => SetProperty(ref _metricCurrency, value); }
+    public string MetricStatusMessage { get => _metricStatusMessage; set => SetProperty(ref _metricStatusMessage, value); }
     public CompanyMetricListItemViewModel? SelectedHubMetric
     {
         get => _selectedHubMetric;
@@ -825,6 +869,57 @@ public sealed class MainViewModel : ViewModelBase
         {
             Notes.Add(note);
         }
+    }
+
+    private async Task SaveMetricAsync()
+    {
+        if (SelectedHubCompany is null)
+        {
+            MetricStatusMessage = "Select a company first.";
+            return;
+        }
+
+        if (!double.TryParse(MetricValue, out var parsedValue))
+        {
+            MetricStatusMessage = "Metric value must be a number.";
+            return;
+        }
+
+        var request = new MetricUpsertRequest
+        {
+            CompanyId = SelectedHubCompany.Id,
+            MetricName = MetricName,
+            Period = MetricPeriod,
+            Value = parsedValue,
+            Unit = MetricUnit,
+            Currency = MetricCurrency
+        };
+
+        var result = await _metricService.UpsertMetricAsync(request);
+        if (result.Status == MetricUpsertStatus.ConflictDetected)
+        {
+            var choice = _metricConflictDialogService.ShowMetricConflictDialog();
+            if (choice == MetricConflictDialogChoice.Cancel)
+            {
+                MetricStatusMessage = "Metric save canceled.";
+                return;
+            }
+
+            var resolution = choice == MetricConflictDialogChoice.Replace
+                ? MetricConflictResolution.ReplaceExisting
+                : MetricConflictResolution.CreateAnyway;
+
+            result = await _metricService.UpsertMetricAsync(request, resolution);
+        }
+
+        MetricStatusMessage = result.Status switch
+        {
+            MetricUpsertStatus.Replaced => $"Metric '{result.NormalizedMetricName}' replaced.",
+            MetricUpsertStatus.CreatedAnyway => $"Metric '{result.NormalizedMetricName}' saved as an additional entry.",
+            _ => $"Metric '{result.NormalizedMetricName}' saved."
+        };
+
+        await LoadCompanyHubAsync(SelectedHubCompany.Id);
     }
 
     private async Task LoadCompanyHubAsync(string? companyId)

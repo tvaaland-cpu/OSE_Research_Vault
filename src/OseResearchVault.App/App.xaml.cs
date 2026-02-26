@@ -62,6 +62,7 @@ public partial class App : Application
         services.AddSingleton<ISearchService, SqliteSearchService>();
         services.AddSingleton<IAgentService, SqliteAgentService>();
         services.AddSingleton<IMetricService, SqliteMetricService>();
+        services.AddSingleton<IMetricConflictDialogService, MetricConflictDialogService>();
         services.AddSingleton<ISecretStore, FileSecretStore>();
         services.AddSingleton<ILLMProvider, LocalEchoLlmProvider>();
 #if OPENAI_PROVIDER

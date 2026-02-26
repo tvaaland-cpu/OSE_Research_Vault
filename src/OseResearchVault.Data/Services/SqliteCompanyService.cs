@@ -236,6 +236,7 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.OpenAsync(cancellationToken);
 
         var rows = await connection.QueryAsync<string>(new CommandDefinition(
+            "SELECT metric_key || ' [' || COALESCE(period_end, 'n/a') || ']: ' || COALESCE(CAST(metric_value AS TEXT), 'n/a') || ' ' || COALESCE(unit, '') FROM metric WHERE company_id = @CompanyId ORDER BY recorded_at DESC",
             @"SELECT DISTINCT metric_key
                 FROM metric
                WHERE company_id = @CompanyId

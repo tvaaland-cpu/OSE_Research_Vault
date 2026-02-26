@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using OseResearchVault.Core.Interfaces;
+using OseResearchVault.Core.Models;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,6 +14,10 @@ namespace OseResearchVault.Tests;
 public sealed class MetricServiceTests
 {
     [Fact]
+    public async Task CreatingSameMetricTwiceReturnsConflict()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
     public async Task CreateMetricFromSnippet_PersistsEvidenceColumns()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
@@ -26,6 +33,25 @@ public sealed class MetricServiceTests
             await initializer.InitializeAsync();
 
             var companyService = new SqliteCompanyService(settingsService);
+            var metricService = new SqliteMetricService(settingsService);
+
+            var companyId = await companyService.CreateCompanyAsync(new CompanyUpsertRequest { Name = "Metric Co" }, []);
+            var request = new MetricUpsertRequest
+            {
+                CompanyId = companyId,
+                MetricName = " Revenue Growth ",
+                Period = "2025-Q1",
+                Value = 11.2,
+                Unit = "%",
+                Currency = "usd"
+            };
+
+            var first = await metricService.UpsertMetricAsync(request);
+            var second = await metricService.UpsertMetricAsync(request);
+
+            Assert.Equal(MetricUpsertStatus.Created, first.Status);
+            Assert.Equal("revenue_growth", first.NormalizedMetricName);
+            Assert.Equal(MetricUpsertStatus.ConflictDetected, second.Status);
             var ftsSyncService = new SqliteFtsSyncService(settingsService);
             var documentService = new SqliteDocumentImportService(settingsService, ftsSyncService, NullLogger<SqliteDocumentImportService>.Instance);
             var snippetRepository = new SqliteSnippetRepository(settingsService);
