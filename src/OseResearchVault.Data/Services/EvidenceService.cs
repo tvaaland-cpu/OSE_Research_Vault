@@ -88,6 +88,9 @@ public sealed class EvidenceService(ISnippetRepository snippetRepository, IEvide
     public Task<IReadOnlyList<Snippet>> ListSnippetsByCompanyAsync(string companyId, CancellationToken cancellationToken = default)
         => snippetRepository.ListSnippetsByCompanyAsync(companyId, cancellationToken);
 
+    public Task<IReadOnlyList<SnippetSearchResult>> SearchSnippetsAsync(string? companyId, string? documentId, string? query, CancellationToken cancellationToken = default)
+        => snippetRepository.SearchSnippetsAsync(companyId, documentId, query, cancellationToken);
+
     public Task DeleteEvidenceLinkAsync(string evidenceLinkId, CancellationToken cancellationToken = default)
         => evidenceLinkRepository.DeleteEvidenceLinkAsync(evidenceLinkId, cancellationToken);
 }

@@ -90,6 +90,7 @@ public sealed class EvidenceServiceTests
 
     [Fact]
     public async Task CreateSnippetAsync_RejectsTextShorterThanTenCharacters()
+    public async Task CanSearchSnippetsAndDeleteEvidenceLink()
     {
         var tempRoot = CreateTempRoot();
 
@@ -150,6 +151,23 @@ public sealed class EvidenceServiceTests
                     relevanceScore: 0.5));
 
             Assert.Equal("Evidence link must include snippet_id or document_id + locator.", exception.Message);
+            var snippet = await service.CreateSnippetAsync(
+                ids.WorkspaceId,
+                ids.DocumentId,
+                ids.CompanyId,
+                sourceId: null,
+                locator: "p=5",
+                text: "Free cash flow improved materially.",
+                createdBy: "unit-test");
+
+            var results = await service.SearchSnippetsAsync(ids.CompanyId, ids.DocumentId, "cash flow");
+            Assert.Contains(results, x => x.Id == snippet.Id);
+
+            var link = await service.CreateEvidenceLinkAsync(ids.ArtifactId, snippet.Id, null, null, null, null);
+            Assert.Single(await service.ListEvidenceLinksByArtifactAsync(ids.ArtifactId));
+
+            await service.DeleteEvidenceLinkAsync(link.Id);
+            Assert.Empty(await service.ListEvidenceLinksByArtifactAsync(ids.ArtifactId));
         }
         finally
         {

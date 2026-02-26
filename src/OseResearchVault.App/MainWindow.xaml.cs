@@ -1,5 +1,7 @@
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
 using OseResearchVault.App.ViewModels;
 using OseResearchVault.Core.Models;
 
@@ -106,12 +108,90 @@ public partial class MainWindow : Window
     private void CopyCitation_OnClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement element || element.Tag is not string citation || string.IsNullOrWhiteSpace(citation))
+
+    private async void CreateSnippetAndLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedRunArtifact is null)
+        {
+            return;
+        }
+
+        var suggestedDocuments = _viewModel.GetSuggestedDocumentsForSelectedArtifact();
+        if (suggestedDocuments.Count == 0)
+        {
+            MessageBox.Show(this, "No documents are available to create evidence.", "Create Snippet & Link", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var documentChoices = suggestedDocuments
+            .Select(d => new CreateSnippetAndLinkDialog.DocumentChoice
+            {
+                Id = d.Id,
+                DisplayName = string.IsNullOrWhiteSpace(d.Company) ? d.Title : $"{d.Title} ({d.Company})",
+                CompanyId = string.IsNullOrWhiteSpace(d.CompanyId) ? null : d.CompanyId
+            })
+            .ToList();
+
+        var dialog = new CreateSnippetAndLinkDialog(documentChoices, _viewModel.GetDocumentDetailsForEvidenceAsync)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+    private async void LinkArtifactSnippet_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedRunArtifact is null)
+        {
+            MessageBox.Show(this, "Select an artifact first.", "Link Snippet", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var defaultCompanyId = string.IsNullOrWhiteSpace(_viewModel.SelectedAgentRun?.CompanyId)
+            ? null
+            : _viewModel.SelectedAgentRun.CompanyId;
+
+        var companyOptions = new List<CompanyOptionViewModel> { new() { Id = string.Empty, DisplayName = "All companies" } };
+        companyOptions.AddRange(_viewModel.CompanyOptions);
+
+        var dialog = new LinkSnippetDialog(companyOptions, _viewModel.Documents.ToList(), defaultCompanyId, _viewModel.SearchSnippetsForLinkingAsync)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true || dialog.SelectedSnippet is null)
+        {
+            return;
+        }
+
+        await _viewModel.LinkSnippetToSelectedArtifactAsync(dialog.SelectedSnippet.Id);
+    }
+
+    private async void RemoveEvidenceLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string evidenceLinkId } || string.IsNullOrWhiteSpace(evidenceLinkId))
+        {
+            return;
+        }
+
+        await _viewModel.RemoveEvidenceLinkAsync(evidenceLinkId);
+    }
+
+    private void EvidenceDocumentLink_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Hyperlink { Tag: string documentId } || string.IsNullOrWhiteSpace(documentId))
         {
             return;
         }
 
         Clipboard.SetText(citation);
         _viewModel.AgentStatusMessage = "Citation copied to clipboard.";
+        await _viewModel.CreateSnippetAndLinkToArtifactAsync(
+            _viewModel.SelectedRunArtifact.Id,
+            dialog.SelectedDocumentId,
+            dialog.Locator,
+            dialog.Snippet,
+            dialog.SelectedCompanyId);
+        _viewModel.OpenDocumentDetails(documentId);
     }
 
 }
