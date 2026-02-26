@@ -1,0 +1,14 @@
+[
+  {
+    "id": "weekly-review",
+    "name": "Weekly review",
+    "description": "Generate Step 16 weekly review outputs.",
+    "automationTemplateId": "weekly-review"
+  },
+  {
+    "id": "watchlist-scan",
+    "name": "Watchlist scan",
+    "description": "Run a weekly watchlist scan summary.",
+    "automationTemplateId": "watchlist-scan"
+  }
+]

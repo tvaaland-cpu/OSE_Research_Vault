@@ -201,6 +201,7 @@ public sealed partial class MainViewModel : ViewModelBase
             new NavigationItem("Watchlist"),
             new NavigationItem("Documents"),
             new NavigationItem("Notes"),
+            new NavigationItem("Templates"),
             new NavigationItem("Agents"),
             new NavigationItem("Automations"),
             new NavigationItem("Ask My Vault"),
@@ -423,6 +424,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 OnPropertyChanged(nameof(IsAutomationsSelected));
                 OnPropertyChanged(nameof(IsAskMyVaultSelected));
                 OnPropertyChanged(nameof(IsConnectorsSelected));
+                OnPropertyChanged(nameof(IsTemplatesSelected));
                 OnPropertyChanged(nameof(IsDashboardSelected));
             }
         }
