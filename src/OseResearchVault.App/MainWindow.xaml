@@ -639,7 +639,14 @@
                 </Border>
             </StackPanel>
             <TabControl Grid.Row="1">
-                <TabItem Header="Overview"><TextBlock Padding="12" Text="Company intelligence overview."/></TabItem>
+                <TabItem Header="Overview">
+                    <StackPanel Margin="12">
+                        <TextBlock Text="Company intelligence overview." Margin="0,0,0,8"/>
+                        <TextBlock Text="Latest close" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding LatestClosePrice}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding LatestCloseDate}" Foreground="#FF4A5568" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </TabItem>
                 <TabItem Header="Documents"><ListBox ItemsSource="{Binding HubDocuments}"/></TabItem>
                 <TabItem Header="Notes"><ListBox ItemsSource="{Binding HubNotes}"/></TabItem>
                 <TabItem Header="Events"><ListBox ItemsSource="{Binding HubEvents}"/></TabItem>
@@ -656,6 +663,7 @@
                             <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricUnit, UpdateSourceTrigger=PropertyChanged}" ToolTip="Unit"/>
                             <TextBox Width="90" Margin="0,0,8,0" Text="{Binding MetricCurrency, UpdateSourceTrigger=PropertyChanged}" ToolTip="Currency"/>
                             <Button Content="Save Metric" Command="{Binding SaveMetricCommand}"/>
+                            <Button Content="Import Prices CSV…" Margin="8,0,0,0" Click="ImportPricesCsv_OnClick"/>
                         </StackPanel>
                         <Grid Grid.Row="1">
                             <Grid.RowDefinitions>
@@ -673,7 +681,16 @@
                             <TextBlock Text="Period" VerticalAlignment="Center" Margin="16,0,8,0"/>
                             <TextBox Width="220" Text="{Binding MetricPeriodFilter, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding HubMetrics}" SelectedItem="{Binding SelectedHubMetric}" AutoGenerateColumns="False" IsReadOnly="True">
+                        <GroupBox Grid.Row="1" Header="Daily prices (last 90 days)" Margin="0,0,0,8">
+                            <DataGrid ItemsSource="{Binding HubPrices}" AutoGenerateColumns="False" IsReadOnly="True" Height="180">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding PriceDate}" Width="150"/>
+                                    <DataGridTextColumn Header="Close" Binding="{Binding CloseDisplay}" Width="120"/>
+                                    <DataGridTextColumn Header="Currency" Binding="{Binding Currency}" Width="100"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+                        <DataGrid Grid.Row="1" Margin="0,196,0,0" ItemsSource="{Binding HubMetrics}" SelectedItem="{Binding SelectedHubMetric}" AutoGenerateColumns="False" IsReadOnly="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Metric" Binding="{Binding MetricName}" Width="150"/>
                                 <DataGridTextColumn Header="Period" Binding="{Binding Period}" Width="120"/>

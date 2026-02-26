@@ -27,6 +27,7 @@ All primary tables use `id TEXT PRIMARY KEY` with a SQLite-generated GUID-style 
 - `tag`: belongs to a `workspace`, unique by `(workspace_id, name)`.
 - `event`: belongs to a `workspace`; optional links to `company` and `position`.
 - `metric`: belongs to a `workspace`; optional links to `company` and `position`.
+- `price_daily`: belongs to a `workspace`; required `company` and daily close values unique on `(workspace_id, company_id, price_date)`.
 
 ## Tag join tables
 
