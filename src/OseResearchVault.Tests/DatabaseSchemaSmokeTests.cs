@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -26,8 +26,7 @@ public sealed class DatabaseSchemaSmokeTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var tableNames = (await connection.QueryAsync<string>(

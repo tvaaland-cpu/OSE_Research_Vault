@@ -3,7 +3,16 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefineConstants>$(DefineConstants);$([MSBuild]::IfElse('$(EnableOpenAiProvider)' == 'true', 'OPENAI_PROVIDER', ''));$([MSBuild]::IfElse('$(EnableAnthropicProvider)' == 'true', 'ANTHROPIC_PROVIDER', ''));$([MSBuild]::IfElse('$(EnableGeminiProvider)' == 'true', 'GEMINI_PROVIDER', ''))</DefineConstants>
+    <DefineConstants>$(DefineConstants)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableOpenAiProvider)' == 'true'">
+    <DefineConstants>$(DefineConstants);OPENAI_PROVIDER</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableAnthropicProvider)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANTHROPIC_PROVIDER</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableGeminiProvider)' == 'true'">
+    <DefineConstants>$(DefineConstants);GEMINI_PROVIDER</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OseResearchVault.Core\OseResearchVault.Core.csproj" />
@@ -15,6 +24,7 @@
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.6" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
-    <PackageReference Include="UglyToad.PdfPig" Version="0.1.9" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
   </ItemGroup>
 </Project>

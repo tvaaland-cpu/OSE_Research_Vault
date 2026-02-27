@@ -14,28 +14,35 @@ public sealed class WorkspaceServiceTests
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ose-workspace-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
-
-        var settings = new AppSettings
+        try
         {
-            DatabaseDirectory = Path.Combine(tempRoot, "default", "data"),
-            VaultStorageDirectory = Path.Combine(tempRoot, "default", "vault"),
-            ImportInboxFolderPath = Path.Combine(tempRoot, "inbox")
-        };
+            var settings = new AppSettings
+            {
+                DatabaseDirectory = Path.Combine(tempRoot, "default", "data"),
+                VaultStorageDirectory = Path.Combine(tempRoot, "default", "vault"),
+                ImportInboxFolderPath = Path.Combine(tempRoot, "inbox")
+            };
 
-        var settingsService = new InMemoryAppSettingsService(settings);
-        var service = new WorkspaceService(settingsService, new NoOpDatabaseInitializer(), new NoOpAutomationScheduler());
+            var settingsService = new InMemoryAppSettingsService(settings);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            var service = new WorkspaceService(settingsService, initializer, new NoOpAutomationScheduler());
 
-        var one = await service.CreateAsync("Workspace One", Path.Combine(tempRoot, "ws1"));
-        var two = await service.CreateAsync("Workspace Two", Path.Combine(tempRoot, "ws2"));
+            var one = await service.CreateAsync("Workspace One", Path.Combine(tempRoot, "ws1"));
+            var two = await service.CreateAsync("Workspace Two", Path.Combine(tempRoot, "ws2"));
 
-        Assert.Equal(two.Id, (await settingsService.GetSettingsAsync()).CurrentWorkspaceId);
+            Assert.Equal(two.Id, (await settingsService.GetSettingsAsync()).CurrentWorkspaceId);
 
-        var switched = await service.SwitchAsync(one.Id);
+            var switched = await service.SwitchAsync(one.Id);
 
-        Assert.True(switched);
-        var persisted = await settingsService.GetSettingsAsync();
-        Assert.Equal(one.Id, persisted.CurrentWorkspaceId);
-        Assert.EndsWith(Path.Combine("ws1", "data"), persisted.DatabaseDirectory);
+            Assert.True(switched);
+            var persisted = await settingsService.GetSettingsAsync();
+            Assert.Equal(one.Id, persisted.CurrentWorkspaceId);
+            Assert.EndsWith(Path.Combine("ws1", "data"), persisted.DatabaseDirectory);
+        }
+        finally
+        {
+            TestCleanup.DeleteDirectory(tempRoot);
+        }
     }
 
     [Fact]
@@ -92,10 +99,7 @@ public sealed class WorkspaceServiceTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            TestCleanup.DeleteDirectory(tempRoot);
         }
     }
 
@@ -113,15 +117,10 @@ public sealed class WorkspaceServiceTests
         }
     }
 
-    private sealed class NoOpDatabaseInitializer : IDatabaseInitializer
-    {
-        public Task<int> InitializeAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
-        public Task<bool> HasPendingMigrationsAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
-    }
-
     private sealed class NoOpAutomationScheduler : IAutomationScheduler
     {
         public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RunOnceAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

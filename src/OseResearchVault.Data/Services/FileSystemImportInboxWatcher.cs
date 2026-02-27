@@ -78,13 +78,13 @@ public sealed class FileSystemImportInboxWatcher : IImportInboxWatcher
 
         _pendingImports.AddOrUpdate(
             path,
-            _ =>
+            _unused =>
             {
                 var cts = new CancellationTokenSource();
                 _ = ImportWhenReadyAsync(path, cts.Token);
                 return cts;
             },
-            (_, existing) =>
+            (_key, existing) =>
             {
                 existing.Cancel();
                 existing.Dispose();

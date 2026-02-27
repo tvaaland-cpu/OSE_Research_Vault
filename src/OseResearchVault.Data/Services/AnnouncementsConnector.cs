@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -186,7 +186,7 @@ public sealed partial class AnnouncementsConnector(IAppSettingsService appSettin
         return DateTimeOffset.TryParse(raw, out var dt) ? dt.UtcDateTime : null;
     }
 
-    private static async Task<SnapshotSaveResult> SaveAnnouncementEvidenceAsync(SqliteConnection connection, AppSettings settings, ConnectorContext ctx, CompanyLookup company, AnnouncementCandidate candidate, DateTime now, CancellationToken ct)
+    private async Task<SnapshotSaveResult> SaveAnnouncementEvidenceAsync(SqliteConnection connection, AppSettings settings, ConnectorContext ctx, CompanyLookup company, AnnouncementCandidate candidate, DateTime now, CancellationToken ct)
     {
         var isPdf = candidate.Url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
         var sourceId = Guid.NewGuid().ToString();
@@ -279,7 +279,7 @@ public sealed partial class AnnouncementsConnector(IAppSettingsService appSettin
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true };
+        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false };
         return new SqliteConnection(builder.ToString());
     }
 

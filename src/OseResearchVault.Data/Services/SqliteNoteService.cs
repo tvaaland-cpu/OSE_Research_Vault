@@ -1,4 +1,5 @@
-using System.Text.Json;
+﻿using System.Text.Json;
+using System.Data.Common;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
@@ -123,7 +124,7 @@ public sealed class SqliteNoteService(IAppSettingsService appSettingsService, IF
         return noteId;
     }
 
-    private static async Task SyncNoteTagsAsync(SqliteConnection connection, SqliteTransaction transaction, string noteId, string workspaceId, IReadOnlyList<string> tags, string now, CancellationToken cancellationToken)
+    private static async Task SyncNoteTagsAsync(SqliteConnection connection, DbTransaction transaction, string noteId, string workspaceId, IReadOnlyList<string> tags, string now, CancellationToken cancellationToken)
     {
         await connection.ExecuteAsync(new CommandDefinition("DELETE FROM note_tag WHERE note_id = @NoteId", new { NoteId = noteId }, transaction, cancellationToken: cancellationToken));
 
@@ -164,7 +165,7 @@ public sealed class SqliteNoteService(IAppSettingsService appSettingsService, IF
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 
     private static async Task<string> EnsureWorkspaceAsync(string databasePath, CancellationToken cancellationToken)

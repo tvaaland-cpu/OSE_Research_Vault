@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -27,7 +27,7 @@ public sealed class GlobalSearchTests
             var searchService = new SqliteSearchService(settingsService, NullLogger<SqliteSearchService>.Instance);
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
@@ -96,7 +96,7 @@ public sealed class GlobalSearchTests
             await initializer.InitializeAsync();
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");

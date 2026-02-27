@@ -1,8 +1,10 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
 using OseResearchVault.Data.Repositories;
 using OseResearchVault.Data.Services;
+using Dapper;
+using Microsoft.Data.Sqlite;
 
 namespace OseResearchVault.Tests;
 
@@ -23,8 +25,25 @@ public sealed class TradeRepositoryEvidenceTests
             var tradeRepository = new SqliteTradeRepository(settingsService);
 
             var companyId = await companyService.CreateCompanyAsync(new CompanyUpsertRequest { Name = "Atea" }, []);
-            var workspaceId = (await settingsService.GetSettingsAsync()).WorkspaceId;
+            var settings = await settingsService.GetSettingsAsync();
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
+            await connection.OpenAsync();
+            var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
             var sourceId = Guid.NewGuid().ToString();
+            var now = DateTime.UtcNow.ToString("O");
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO source (id, workspace_id, company_id, name, source_type, created_at, updated_at)
+                  VALUES (@Id, @WorkspaceId, @CompanyId, @Name, @SourceType, @Now, @Now)",
+                new
+                {
+                    Id = sourceId,
+                    WorkspaceId = workspaceId,
+                    CompanyId = companyId,
+                    Name = "Broker Statement",
+                    SourceType = "statement",
+                    Now = now
+                });
 
             await tradeRepository.CreateTradeAsync(new CreateTradeRequest
             {
@@ -46,10 +65,7 @@ public sealed class TradeRepositoryEvidenceTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            TestCleanup.DeleteDirectory(tempRoot);
         }
     }
 

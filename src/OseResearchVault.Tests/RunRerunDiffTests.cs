@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Models;
@@ -48,7 +48,7 @@ public sealed class RunRerunDiffTests
             });
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var storedParentRunId = await connection.QuerySingleAsync<string?>("SELECT parent_run_id FROM agent_run WHERE id = @Id", new { Id = childRunId });

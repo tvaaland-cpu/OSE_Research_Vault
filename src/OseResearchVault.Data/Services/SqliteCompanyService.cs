@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 using System.Text;
@@ -192,10 +192,10 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.OpenAsync(cancellationToken);
 
         var rows = await connection.QueryAsync<MetricRow>(new CommandDefinition(
-            @"SELECT m.id,
-                     m.metric_key AS MetricName,
-                     TRIM(COALESCE(m.period_start, '') || CASE WHEN m.period_start IS NOT NULL AND m.period_end IS NOT NULL THEN ' - ' ELSE '' END || COALESCE(m.period_end, '')) AS Period,
-                     m.metric_value AS Value,
+            @"SELECT m.metric_id AS Id,
+                     m.metric_name AS MetricName,
+                     m.period AS Period,
+                     m.value AS Value,
                      m.unit,
                      m.currency,
                      m.snippet_id AS SnippetId,
@@ -210,8 +210,8 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
                 LEFT JOIN document d ON d.id = s.document_id
                 LEFT JOIN source src ON src.id = s.source_id
                WHERE m.company_id = @CompanyId
-            ORDER BY m.recorded_at DESC",
-            new { CompanyId = companyId }, cancellationToken: cancellationToken));
+             ORDER BY m.created_at DESC",
+             new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         return rows.Select(static row => new CompanyMetricRecord
         {
@@ -238,22 +238,15 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.OpenAsync(cancellationToken);
 
         var rows = await connection.QueryAsync<string>(new CommandDefinition(
-            "SELECT metric_key || ' [' || COALESCE(period_end, 'n/a') || ']: ' || COALESCE(CAST(metric_value AS TEXT), 'n/a') || ' ' || COALESCE(unit, '') FROM metric WHERE company_id = @CompanyId ORDER BY recorded_at DESC",
-            @"SELECT DISTINCT metric_key
-                FROM metric
-               WHERE company_id = @CompanyId
-                 AND metric_key IS NOT NULL
-                 AND TRIM(metric_key) <> ''
-            ORDER BY metric_key",
-            @"SELECT metric_key
-                     || CASE WHEN COALESCE(period_label, '') = '' THEN '' ELSE ' (' || period_label || ')' END
+            @"SELECT metric_name
+                     || CASE WHEN COALESCE(period, '') = '' THEN '' ELSE ' (' || period || ')' END
                      || ': '
-                     || COALESCE(CAST(metric_value AS TEXT), 'n/a')
+                     || COALESCE(CAST(value AS TEXT), 'n/a')
                      || CASE WHEN COALESCE(unit, '') = '' THEN '' ELSE ' ' || unit END
                      || CASE WHEN COALESCE(currency, '') = '' THEN '' ELSE ' [' || currency || ']' END
                 FROM metric
                WHERE company_id = @CompanyId
-            ORDER BY recorded_at DESC",
+            ORDER BY created_at DESC",
             new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         return rows.ToList();
@@ -266,32 +259,20 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         await connection.OpenAsync(cancellationToken);
 
         var now = DateTime.UtcNow.ToString("O");
-        var periodStart = request.Period;
-        var periodEnd = (string?)null;
-
-        if (!string.IsNullOrWhiteSpace(request.Period) && request.Period.Contains('-', StringComparison.Ordinal))
-        {
-            var parts = request.Period.Split('-', 2, StringSplitOptions.TrimEntries);
-            periodStart = parts[0];
-            periodEnd = parts.Length > 1 ? parts[1] : null;
-        }
-
         await connection.ExecuteAsync(new CommandDefinition(
             @"UPDATE metric
-                 SET metric_key = @MetricName,
-                     period_start = @PeriodStart,
-                     period_end = @PeriodEnd,
-                     metric_value = @Value,
+                 SET metric_name = @MetricName,
+                     period = @Period,
+                     value = @Value,
                      unit = @Unit,
                      currency = @Currency,
-                     recorded_at = @Now
-               WHERE id = @Id",
+                     created_at = @Now
+               WHERE metric_id = @Id",
             new
             {
                 Id = metricId,
                 request.MetricName,
-                PeriodStart = string.IsNullOrWhiteSpace(periodStart) ? null : periodStart.Trim(),
-                PeriodEnd = string.IsNullOrWhiteSpace(periodEnd) ? null : periodEnd.Trim(),
+                Period = string.IsNullOrWhiteSpace(request.Period) ? null : request.Period.Trim(),
                 request.Value,
                 Unit = string.IsNullOrWhiteSpace(request.Unit) ? null : request.Unit.Trim(),
                 Currency = string.IsNullOrWhiteSpace(request.Currency) ? null : request.Currency.Trim(),
@@ -304,7 +285,7 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
         var settings = await appSettingsService.GetSettingsAsync(cancellationToken);
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
-        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM metric WHERE id = @Id", new { Id = metricId }, cancellationToken: cancellationToken));
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM metric WHERE metric_id = @Id", new { Id = metricId }, cancellationToken: cancellationToken));
     }
 
 
@@ -1085,7 +1066,7 @@ public sealed class SqliteCompanyService(IAppSettingsService appSettingsService)
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 
 

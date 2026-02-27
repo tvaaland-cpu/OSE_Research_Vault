@@ -87,10 +87,10 @@ public sealed class ExportServiceTests
             var notesText = await File.ReadAllTextAsync(Path.Combine(outputFolder, "notes.md"));
             var eventsText = await File.ReadAllTextAsync(Path.Combine(outputFolder, "events.csv"));
 
-            Assert.Contains("[REDACTED_EMAIL]", notesText);
-            Assert.Contains("[REDACTED_PATH]", notesText);
-            Assert.Contains("[REDACTED_EMAIL]", eventsText);
-            Assert.Contains("[REDACTED_PHONE]", eventsText);
+            Assert.Contains("[REDACTED:EMAIL]", notesText);
+            Assert.Contains("[REDACTED:PATH]", notesText);
+            Assert.Contains("[REDACTED:EMAIL]", eventsText);
+            Assert.Contains("[REDACTED:PHONE]", eventsText);
         }
         finally
         {
@@ -130,7 +130,7 @@ public sealed class ExportServiceTests
                 await connection.ExecuteAsync("INSERT INTO document (id, workspace_id, company_id, title, doc_type, file_path, content_hash, imported_at, created_at, updated_at, is_archived) VALUES (@Id,@WorkspaceId,@CompanyId,@Title,@Type,@Path,@Hash,@Now,@Now,@Now,0)",
                     new { Id = "doc-private", WorkspaceId = workspaceId, CompanyId = "comp-1", Title = "Private doc", Type = "filing", Path = privateDocPath, Hash = "hash-private", Now = now });
 
-                await connection.ExecuteAsync("INSERT INTO tag (id, workspace_id, name, created_at, updated_at) VALUES (@Id,@WorkspaceId,@Name,@Now,@Now)",
+                await connection.ExecuteAsync("INSERT INTO tag (id, workspace_id, name, created_at) VALUES (@Id,@WorkspaceId,@Name,@Now)",
                     new { Id = "tag-private", WorkspaceId = workspaceId, Name = "private", Now = now });
 
                 await connection.ExecuteAsync("INSERT INTO note_tag (note_id, tag_id) VALUES (@NoteId,@TagId)", new { NoteId = "note-private", TagId = "tag-private" });
@@ -195,18 +195,15 @@ public sealed class ExportServiceTests
             new { Id = "note-1", WorkspaceId = workspaceId, CompanyId = "comp-1", Title = "Thesis", Content = "Contact ceo@acme.com in C:\\Vault", Type = "thesis", Now = now });
         await connection.ExecuteAsync("INSERT INTO document (id, workspace_id, company_id, title, doc_type, file_path, content_hash, imported_at, created_at, updated_at, is_archived) VALUES (@Id,@WorkspaceId,@CompanyId,@Title,@Type,@Path,@Hash,@Now,@Now,@Now,0)",
             new { Id = "doc-1", WorkspaceId = workspaceId, CompanyId = "comp-1", Title = "10-Q", Type = "filing", Path = sourceDocPath, Hash = "hash-a", Now = now });
-        await connection.ExecuteAsync("INSERT INTO snippet (id, workspace_id, company_id, document_id, quote_text, context, created_at) VALUES (@Id,@WorkspaceId,@CompanyId,@DocumentId,@Quote,@Context,@Now)",
-            new { Id = "snip-1", WorkspaceId = workspaceId, CompanyId = "comp-1", DocumentId = "doc-1", Quote = "Revenue up", Context = "p.3", Now = now });
-        await connection.ExecuteAsync("INSERT INTO metric (id, workspace_id, company_id, metric_key, metric_value, unit, period_start, period_end, recorded_at, snippet_id, created_at) VALUES (@Id,@WorkspaceId,@CompanyId,@Key,@Value,@Unit,@Start,@End,@Now,@SnippetId,@Now)",
-            new { Id = "met-1", WorkspaceId = workspaceId, CompanyId = "comp-1", Key = "Revenue", Value = 100.5, Unit = "USDm", Start = "2025-01-01", End = "2025-03-31", Now = now, SnippetId = "snip-1" });
+        await connection.ExecuteAsync("INSERT INTO snippet (id, workspace_id, document_id, quote_text, context, created_at) VALUES (@Id,@WorkspaceId,@DocumentId,@Quote,@Context,@Now)",
+            new { Id = "snip-1", WorkspaceId = workspaceId, DocumentId = "doc-1", Quote = "Revenue up", Context = "p.3", Now = now });
+        await connection.ExecuteAsync("INSERT INTO metric (metric_id, workspace_id, company_id, metric_name, period, value, unit, currency, snippet_id, created_at) VALUES (@Id,@WorkspaceId,@CompanyId,@Name,@Period,@Value,@Unit,@Currency,@SnippetId,@Now)",
+            new { Id = "met-1", WorkspaceId = workspaceId, CompanyId = "comp-1", Name = "Revenue", Period = "2025Q1", Value = 100.5, Unit = "USDm", Currency = "USD", Now = now, SnippetId = "snip-1" });
     }
 
     private static void Cleanup(string tempRoot)
     {
-        if (Directory.Exists(tempRoot))
-        {
-            Directory.Delete(tempRoot, recursive: true);
-        }
+        TestCleanup.DeleteDirectory(tempRoot);
     }
 
     private sealed class TestAppSettingsService(string rootDirectory) : IAppSettingsService

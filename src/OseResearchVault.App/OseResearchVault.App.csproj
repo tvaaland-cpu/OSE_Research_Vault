@@ -6,7 +6,16 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefineConstants>$(DefineConstants);$([MSBuild]::IfElse('$(EnableOpenAiProvider)' == 'true', 'OPENAI_PROVIDER', ''));$([MSBuild]::IfElse('$(EnableAnthropicProvider)' == 'true', 'ANTHROPIC_PROVIDER', ''));$([MSBuild]::IfElse('$(EnableGeminiProvider)' == 'true', 'GEMINI_PROVIDER', ''))</DefineConstants>
+    <DefineConstants>$(DefineConstants)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableOpenAiProvider)' == 'true'">
+    <DefineConstants>$(DefineConstants);OPENAI_PROVIDER</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableAnthropicProvider)' == 'true'">
+    <DefineConstants>$(DefineConstants);ANTHROPIC_PROVIDER</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EnableGeminiProvider)' == 'true'">
+    <DefineConstants>$(DefineConstants);GEMINI_PROVIDER</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OseResearchVault.Core\OseResearchVault.Core.csproj" />

@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
 
@@ -71,8 +71,7 @@ public sealed class SqliteFtsSyncService(IAppSettingsService appSettingsService)
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = settings.DatabaseFilePath,
-            ForeignKeys = true
-        }.ToString();
+            ForeignKeys = true, Pooling = false }.ToString();
 
         var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

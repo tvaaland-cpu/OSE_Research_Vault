@@ -24,7 +24,7 @@ public sealed partial class RegexRedactionService : IRedactionService
     [GeneratedRegex(@"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b", RegexOptions.IgnoreCase)]
     private static partial Regex GitHubTokenRegex();
 
-    [GeneratedRegex(@"\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"\"]?([A-Za-z0-9_\-/+=]{8,})", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*['""]?([A-Za-z0-9_\-/+=]{8,})", RegexOptions.IgnoreCase)]
     private static partial Regex GenericSecretRegex();
 
     public RedactionResult Redact(string text, RedactionOptions options)

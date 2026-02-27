@@ -1,7 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using OseResearchVault.Core.Interfaces;
-using OseResearchVault.Core.Models;
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -15,14 +12,6 @@ public sealed class MetricServiceTests
 {
     [Fact]
     public async Task CreatingSameMetricTwiceReturnsConflict()
-    {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempRoot);
-    public async Task CreateMetricFromSnippet_PersistsEvidenceColumns()
-    {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ose-research-vault-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempRoot);
-    public async Task CanCreateMetricLinkedToSnippetAndListByCompany()
     {
         var tempRoot = CreateTempRoot();
 
@@ -52,6 +41,25 @@ public sealed class MetricServiceTests
             Assert.Equal(MetricUpsertStatus.Created, first.Status);
             Assert.Equal("revenue_growth", first.NormalizedMetricName);
             Assert.Equal(MetricUpsertStatus.ConflictDetected, second.Status);
+        }
+        finally
+        {
+            Cleanup(tempRoot);
+        }
+    }
+
+    [Fact]
+    public async Task CreateMetricFromSnippet_PersistsEvidenceColumns()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
+
+            var companyService = new SqliteCompanyService(settingsService);
             var ftsSyncService = new SqliteFtsSyncService(settingsService);
             var documentService = new SqliteDocumentImportService(settingsService, ftsSyncService, NullLogger<SqliteDocumentImportService>.Instance);
             var snippetRepository = new SqliteSnippetRepository(settingsService);
@@ -87,26 +95,33 @@ public sealed class MetricServiceTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
-            var metric = await connection.QuerySingleAsync<(string metric_key, string period_label, string currency, string snippet_id)>(
-                "SELECT metric_key, period_label, currency, snippet_id FROM metric LIMIT 1");
+            var metric = await connection.QuerySingleAsync<(string metric_name, string period, string currency, string snippet_id)>(
+                "SELECT metric_name, period, currency, snippet_id FROM metric LIMIT 1");
 
-            Assert.Equal("revenue", metric.metric_key);
-            Assert.Equal("2025Q4", metric.period_label);
+            Assert.Equal("revenue", metric.metric_name);
+            Assert.Equal("2025Q4", metric.period);
             Assert.Equal("NOK", metric.currency);
             Assert.Equal(snippet.Id, metric.snippet_id);
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            Cleanup(tempRoot);
         }
     }
+
+    [Fact]
+    public async Task CanCreateMetricLinkedToSnippetAndListByCompany()
+    {
+        var tempRoot = CreateTempRoot();
+
+        try
+        {
+            var settingsService = new TestAppSettingsService(tempRoot);
+            var initializer = new SqliteDatabaseInitializer(settingsService, NullLogger<SqliteDatabaseInitializer>.Instance);
+            await initializer.InitializeAsync();
 
             var ids = await SeedWorkspaceDataAsync(settingsService);
             var service = new MetricService(new SqliteMetricRepository(settingsService));
@@ -187,8 +202,7 @@ public sealed class MetricServiceTests
         await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = settings.DatabaseFilePath,
-            ForeignKeys = true
-        }.ToString());
+            ForeignKeys = true, Pooling = false }.ToString());
 
         await connection.OpenAsync();
 

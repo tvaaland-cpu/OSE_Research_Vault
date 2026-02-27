@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -77,7 +77,7 @@ public sealed class AnnouncementsConnectorTests
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true };
+        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false };
         return new SqliteConnection(builder.ToString());
     }
 

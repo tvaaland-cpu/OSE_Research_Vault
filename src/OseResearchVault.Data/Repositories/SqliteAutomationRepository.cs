@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
@@ -151,8 +151,7 @@ public sealed class SqliteAutomationRepository(IAppSettingsService appSettingsSe
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databaseFilePath,
-            ForeignKeys = true
-        }.ToString();
+            ForeignKeys = true, Pooling = false }.ToString();
 
         return new SqliteConnection(connectionString);
     }

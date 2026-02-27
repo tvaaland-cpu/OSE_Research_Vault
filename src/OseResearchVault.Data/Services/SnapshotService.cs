@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
@@ -96,7 +96,7 @@ public sealed partial class SnapshotService(IAppSettingsService appSettingsServi
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true };
+        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false };
         return new SqliteConnection(builder.ToString());
     }
 

@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
@@ -146,11 +146,12 @@ public sealed class SqliteSnippetRepository(IAppSettingsService appSettingsServi
                 LEFT JOIN company c ON c.id = d.company_id
                WHERE (@CompanyId IS NULL OR d.company_id = @CompanyId)
                  AND (@DocumentId IS NULL OR s.document_id = @DocumentId)
-                 AND (
-                     @Query IS NULL
-                     OR (@UseFts = 1 AND s.id IN (SELECT id FROM snippet_fts WHERE snippet_fts MATCH @Query))
-                     OR (@UseFts = 0 AND lower(s.quote_text) LIKE '%' || lower(@Query) || '%')
-                 )
+                  AND (
+                      @Query IS NULL
+                      OR (@UseFts = 1 AND s.id IN (SELECT id FROM snippet_fts WHERE snippet_fts MATCH @Query))
+                      OR lower(s.quote_text) LIKE '%' || lower(@Query) || '%'
+                      OR lower(COALESCE(s.context, '')) LIKE '%' || lower(@Query) || '%'
+                  )
             ORDER BY s.created_at DESC
                LIMIT 200",
             new
@@ -188,7 +189,7 @@ public sealed class SqliteSnippetRepository(IAppSettingsService appSettingsServi
     };
 
     private static SqliteConnection OpenConnection(string databasePath)
-        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
 
     private sealed class SnippetRow
     {

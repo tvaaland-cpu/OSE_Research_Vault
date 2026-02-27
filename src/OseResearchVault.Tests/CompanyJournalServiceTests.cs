@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -134,7 +134,7 @@ public sealed class CompanyJournalServiceTests
     }
 
     private static SqliteConnection OpenConnection(string databasePath)
-        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
 
     private sealed class TestAppSettingsService(string rootDirectory) : IAppSettingsService
     {

@@ -1,5 +1,3 @@
-ALTER TABLE metric ADD COLUMN snippet_id TEXT;
-ALTER TABLE metric ADD COLUMN period_label TEXT;
-ALTER TABLE metric ADD COLUMN currency TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_metric_snippet_id ON metric(snippet_id);
+-- Superseded by 0008_metric_evidence_anchor.sql, which recreates metric with these columns.
+-- Kept as a no-op for compatibility with migration ordering.
+SELECT 1;

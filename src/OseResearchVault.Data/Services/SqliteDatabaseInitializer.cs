@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.Core.Interfaces;
@@ -31,6 +31,15 @@ public sealed class SqliteDatabaseInitializer(
             appliedCount++;
         }
 
+        var workspaceCount = await db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM workspace");
+        if (workspaceCount == 0)
+        {
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            await db.ExecuteAsync(
+                "INSERT INTO workspace (id, name, description, created_at, updated_at) VALUES ('default', 'Default Workspace', 'Auto-seeded workspace', @Now, @Now)",
+                new { Now = now });
+        }
+
         logger.LogInformation("Database initialized at {DatabasePath}", settings.DatabaseFilePath);
         return appliedCount;
     }
@@ -48,8 +57,7 @@ public sealed class SqliteDatabaseInitializer(
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = settings.DatabaseFilePath,
-            ForeignKeys = true
-        }.ToString();
+            ForeignKeys = true, Pooling = false }.ToString();
 
         var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

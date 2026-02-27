@@ -7,15 +7,19 @@ public sealed class ContextPack
     public RetrievalLog Log { get; init; } = new();
 }
 
-public sealed class ContextPackItem
+public class ContextPackItem
 {
     public string ItemType { get; init; } = string.Empty;
     public string Title { get; init; } = string.Empty;
     public string TextExcerpt { get; init; } = string.Empty;
+    public string SourceDescription { get; init; } = string.Empty;
+    public string Content { get; init; } = string.Empty;
     public string SourceRef { get; init; } = string.Empty;
     public string Locator { get; init; } = string.Empty;
     public string CitationLabel { get; init; } = string.Empty;
 }
+
+public sealed class ContextItem : ContextPackItem;
 
 public sealed class RetrievalLog
 {

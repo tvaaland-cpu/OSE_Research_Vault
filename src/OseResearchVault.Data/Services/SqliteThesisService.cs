@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
@@ -26,7 +26,7 @@ public sealed class SqliteThesisService(IAppSettingsService appSettingsService) 
                 FROM thesis_version
                WHERE company_id = @CompanyId
                  AND (@PositionId IS NULL OR position_id = @PositionId)
-            ORDER BY datetime(created_at) DESC, thesis_version_id DESC",
+            ORDER BY created_at DESC, thesis_version_id DESC",
             new { CompanyId = companyId, PositionId = positionId }, cancellationToken: cancellationToken));
 
         return rows.ToList();
@@ -76,7 +76,7 @@ public sealed class SqliteThesisService(IAppSettingsService appSettingsService) 
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 
     private static async Task<string> EnsureWorkspaceAsync(string databasePath, CancellationToken cancellationToken)

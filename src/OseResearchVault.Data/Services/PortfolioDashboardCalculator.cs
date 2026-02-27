@@ -14,8 +14,8 @@ public static class PortfolioDashboardCalculator
         var materialized = rows.Select(row =>
         {
             var costBasis = row.PositionStats.NetQuantity * row.PositionStats.AverageCost;
-            var marketValue = row.LastPrice.HasValue ? row.LastPrice.Value * row.PositionStats.NetQuantity : null;
-            var unrealized = marketValue.HasValue ? marketValue.Value - costBasis : null;
+            var marketValue = row.LastPrice.HasValue ? (double?)(row.LastPrice.Value * row.PositionStats.NetQuantity) : null;
+            var unrealized = marketValue.HasValue ? (double?)(marketValue.Value - costBasis) : null;
 
             return new PortfolioDashboardRow
             {

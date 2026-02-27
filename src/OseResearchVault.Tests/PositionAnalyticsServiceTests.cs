@@ -25,7 +25,7 @@ public sealed class PositionAnalyticsServiceTests
         Assert.Equal(110.5d, stats.AverageCost, 6);
         Assert.Equal(92.5d, stats.RealizedPnl, 6);
         Assert.Equal(15d, stats.TotalFees, 6);
-        Assert.Equal(2100d, stats.CurrentExposure, 6);
+        Assert.Equal((double?)2100d, stats.CurrentExposure);
     }
 
     private sealed class InMemoryTradeRepository(IReadOnlyList<TradeRecord> trades) : ITradeRepository

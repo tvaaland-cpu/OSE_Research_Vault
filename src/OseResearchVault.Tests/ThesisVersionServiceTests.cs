@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -93,8 +93,7 @@ public sealed class ThesisVersionServiceTests
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = appSettings.DatabaseFilePath,
-            ForeignKeys = true
-        }.ToString());
+            ForeignKeys = true, Pooling = false }.ToString());
         await connection.OpenAsync();
 
         var service = new SqliteThesisService(settings);

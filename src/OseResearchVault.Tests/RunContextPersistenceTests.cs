@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -47,7 +47,7 @@ public sealed class RunContextPersistenceTests
             Assert.Contains("User query: What changed?", runContext.PromptText);
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var row = await connection.QuerySingleAsync<(string ContextJson, string PromptText)>("SELECT context_json AS ContextJson, prompt_text AS PromptText FROM run_context WHERE run_id = @RunId", new { RunId = runId });

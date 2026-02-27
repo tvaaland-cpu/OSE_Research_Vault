@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.Core.Interfaces;
@@ -32,7 +32,7 @@ SELECT * FROM (
            n.company_id AS CompanyId,
            c.name AS CompanyName,
            n.title AS Title,
-           snippet(note_fts, 2, '<mark>', '</mark>', ' … ', 16) AS MatchSnippet,
+           snippet(note_fts, 2, '<mark>', '</mark>', ' â€¦ ', 16) AS MatchSnippet,
            n.created_at AS OccurredAt,
            bm25(note_fts) AS Rank
       FROM note_fts
@@ -53,7 +53,7 @@ SELECT * FROM (
            d.company_id AS CompanyId,
            c.name AS CompanyName,
            d.title AS Title,
-           snippet(document_text_fts, 2, '<mark>', '</mark>', ' … ', 16) AS MatchSnippet,
+           snippet(document_text_fts, 2, '<mark>', '</mark>', ' â€¦ ', 16) AS MatchSnippet,
            COALESCE(d.imported_at, d.created_at) AS OccurredAt,
            bm25(document_text_fts) AS Rank
       FROM document_text_fts
@@ -74,7 +74,7 @@ SELECT * FROM (
            COALESCE(n.company_id, d.company_id) AS CompanyId,
            c.name AS CompanyName,
            substr(s.quote_text, 1, 120) AS Title,
-           snippet(snippet_fts, 1, '<mark>', '</mark>', ' … ', 16) AS MatchSnippet,
+           snippet(snippet_fts, 1, '<mark>', '</mark>', ' â€¦ ', 16) AS MatchSnippet,
            s.created_at AS OccurredAt,
            bm25(snippet_fts) AS Rank
       FROM snippet_fts
@@ -97,7 +97,7 @@ SELECT * FROM (
            NULL AS CompanyId,
            NULL AS CompanyName,
            COALESCE(a.title, '(artifact)') AS Title,
-           snippet(artifact_fts, 1, '<mark>', '</mark>', ' … ', 16) AS MatchSnippet,
+           snippet(artifact_fts, 1, '<mark>', '</mark>', ' â€¦ ', 16) AS MatchSnippet,
            a.created_at AS OccurredAt,
            bm25(artifact_fts) AS Rank
       FROM artifact_fts
@@ -175,6 +175,6 @@ OFFSET @Offset";
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 }

@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
@@ -90,22 +90,22 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
 
         var metricIssues = hasMetricSnippetColumn
             ? (await connection.QueryAsync<DataQualityMetricIssue>(new CommandDefinition(
-                @"SELECT m.id AS MetricId,
-                         m.metric_key AS MetricKey,
-                         m.recorded_at AS RecordedAt
+                @"SELECT m.metric_id AS MetricId,
+                         m.metric_name AS MetricKey,
+                         m.created_at AS RecordedAt
                     FROM metric m
                    WHERE m.snippet_id IS NULL
-                ORDER BY m.recorded_at DESC",
+                ORDER BY m.created_at DESC",
                 cancellationToken: cancellationToken))).ToList()
             : [];
 
         var snippetIssues = (await connection.QueryAsync<DataQualitySnippetIssue>(new CommandDefinition(
             @"SELECT s.id AS SnippetId,
-                     COALESCE(s.locator, '') AS Locator,
+                     COALESCE(s.context, '') AS Locator,
                      s.document_id AS DocumentId,
                      s.source_id AS SourceId
                 FROM snippet s
-               WHERE COALESCE(s.locator, '') = ''
+               WHERE COALESCE(s.context, '') = ''
                   OR (s.document_id IS NULL AND s.source_id IS NULL)
             ORDER BY s.created_at DESC",
             cancellationToken: cancellationToken))).ToList();
@@ -311,7 +311,7 @@ public sealed class SqliteDataQualityService(IAppSettingsService appSettingsServ
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 
     private sealed class DuplicateRow

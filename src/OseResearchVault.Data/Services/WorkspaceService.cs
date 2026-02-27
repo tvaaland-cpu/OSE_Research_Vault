@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
 using OseResearchVault.Core.Models;
@@ -174,7 +174,7 @@ public sealed class WorkspaceService(
 
     private static async Task EnsureWorkspaceRowAsync(string databasePath, WorkspaceSetting workspace, CancellationToken cancellationToken)
     {
-        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
         await connection.OpenAsync(cancellationToken);
         await connection.ExecuteAsync(new CommandDefinition(
             "INSERT OR IGNORE INTO workspace (id, name, description, created_at, updated_at) VALUES (@Id, @Name, @Path, @Now, @Now)",
@@ -198,15 +198,13 @@ public sealed class WorkspaceService(
         {
             DataSource = sourceDatabasePath,
             Mode = SqliteOpenMode.ReadOnly,
-            ForeignKeys = true
-        }.ToString();
+            ForeignKeys = true, Pooling = false }.ToString();
 
         var destinationConnectionString = new SqliteConnectionStringBuilder
         {
             DataSource = destinationDatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            ForeignKeys = true
-        }.ToString();
+            ForeignKeys = true, Pooling = false }.ToString();
 
         await using var sourceConnection = new SqliteConnection(sourceConnectionString);
         await sourceConnection.OpenAsync(cancellationToken);

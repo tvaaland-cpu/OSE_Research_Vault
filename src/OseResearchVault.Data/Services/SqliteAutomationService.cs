@@ -15,22 +15,25 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await connection.OpenAsync(cancellationToken);
 
         var rows = await connection.QueryAsync<AutomationRecord>(new CommandDefinition(
-            @"SELECT id,
-                     name,
-                     enabled = 1 AS Enabled,
-                     schedule_type AS ScheduleType,
-                     interval_minutes AS IntervalMinutes,
-                     daily_time AS DailyTime,
-                     payload_type AS PayloadType,
-                     agent_id AS AgentId,
-                     company_scope_mode AS CompanyScopeMode,
-                     COALESCE(company_scope_ids_json, '[]') AS CompanyScopeIdsJson,
-                     COALESCE(query_text, '') AS QueryText,
-                     next_run_at AS NextRunAt,
-                     last_run_at AS LastRunAt,
-                     last_status AS LastStatus
-                FROM automation
-            ORDER BY created_at DESC", cancellationToken: cancellationToken));
+            @"SELECT a.automation_id AS Id,
+                     a.name,
+                     a.is_enabled AS Enabled,
+                     a.schedule_type AS ScheduleType,
+                     a.interval_minutes AS IntervalMinutes,
+                     a.daily_time AS DailyTime,
+                     a.payload_json AS PayloadJson,
+                     a.next_run_at AS NextRunAt,
+                     a.last_run_at AS LastRunAt,
+                     COALESCE(
+                         (SELECT ar.status
+                            FROM automation_run ar
+                           WHERE ar.automation_id = a.automation_id
+                        ORDER BY ar.started_at DESC
+                           LIMIT 1),
+                         ''
+                     ) AS LastStatus
+                FROM automation a
+            ORDER BY a.created_at DESC", cancellationToken: cancellationToken));
 
         return rows.ToList();
     }
@@ -47,23 +50,19 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await connection.OpenAsync(cancellationToken);
 
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO automation (id, workspace_id, name, enabled, schedule_type, interval_minutes, daily_time, payload_type, agent_id, company_scope_mode, company_scope_ids_json, query_text, next_run_at, created_at, updated_at)
-              VALUES (@Id, @WorkspaceId, @Name, @Enabled, @ScheduleType, @IntervalMinutes, @DailyTime, @PayloadType, @AgentId, @CompanyScopeMode, @CompanyScopeIdsJson, @QueryText, @NextRunAt, @Now, @Now)",
+            @"INSERT INTO automation (automation_id, workspace_id, name, is_enabled, schedule_type, interval_minutes, daily_time, last_run_at, next_run_at, payload_json, created_at, updated_at)
+              VALUES (@AutomationId, @WorkspaceId, @Name, @Enabled, @ScheduleType, @IntervalMinutes, @DailyTime, NULL, @NextRunAt, @PayloadJson, @Now, @Now)",
             new
             {
-                Id = automationId,
+                AutomationId = automationId,
                 WorkspaceId = workspaceId,
                 Name = request.Name.Trim(),
                 Enabled = request.Enabled ? 1 : 0,
                 ScheduleType = request.ScheduleType,
                 request.IntervalMinutes,
                 DailyTime = Clean(request.DailyTime),
-                PayloadType = request.PayloadType,
-                AgentId = Clean(request.AgentId),
-                CompanyScopeMode = request.CompanyScopeMode,
-                CompanyScopeIdsJson = JsonSerializer.Serialize(request.CompanyScopeIds.Distinct()),
-                QueryText = request.QueryText.Trim(),
                 NextRunAt = request.Enabled ? nextRun : null,
+                PayloadJson = BuildPayloadJson(request),
                 Now = now.ToString("O")
             }, cancellationToken: cancellationToken));
 
@@ -82,32 +81,24 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await connection.ExecuteAsync(new CommandDefinition(
             @"UPDATE automation
                  SET name = @Name,
-                     enabled = @Enabled,
+                     is_enabled = @Enabled,
                      schedule_type = @ScheduleType,
                      interval_minutes = @IntervalMinutes,
                      daily_time = @DailyTime,
-                     payload_type = @PayloadType,
-                     agent_id = @AgentId,
-                     company_scope_mode = @CompanyScopeMode,
-                     company_scope_ids_json = @CompanyScopeIdsJson,
-                     query_text = @QueryText,
                      next_run_at = @NextRunAt,
+                     payload_json = @PayloadJson,
                      updated_at = @Now
-               WHERE id = @Id",
+               WHERE automation_id = @AutomationId",
             new
             {
-                Id = automationId,
+                AutomationId = automationId,
                 Name = request.Name.Trim(),
                 Enabled = request.Enabled ? 1 : 0,
                 ScheduleType = request.ScheduleType,
                 request.IntervalMinutes,
                 DailyTime = Clean(request.DailyTime),
-                PayloadType = request.PayloadType,
-                AgentId = Clean(request.AgentId),
-                CompanyScopeMode = request.CompanyScopeMode,
-                CompanyScopeIdsJson = JsonSerializer.Serialize(request.CompanyScopeIds.Distinct()),
-                QueryText = request.QueryText.Trim(),
                 NextRunAt = request.Enabled ? nextRun : null,
+                PayloadJson = BuildPayloadJson(request),
                 Now = now.ToString("O")
             }, cancellationToken: cancellationToken));
     }
@@ -118,7 +109,7 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await using var connection = OpenConnection(settings.DatabaseFilePath);
         await connection.OpenAsync(cancellationToken);
 
-        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM automation WHERE id = @Id", new { Id = automationId }, cancellationToken: cancellationToken));
+        await connection.ExecuteAsync(new CommandDefinition("DELETE FROM automation WHERE automation_id = @AutomationId", new { AutomationId = automationId }, cancellationToken: cancellationToken));
     }
 
     public async Task SetAutomationEnabledAsync(string automationId, bool enabled, CancellationToken cancellationToken = default)
@@ -128,8 +119,8 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await connection.OpenAsync(cancellationToken);
 
         var schedule = await connection.QuerySingleOrDefaultAsync<(string ScheduleType, int? IntervalMinutes, string? DailyTime)>(new CommandDefinition(
-            "SELECT schedule_type as ScheduleType, interval_minutes as IntervalMinutes, daily_time as DailyTime FROM automation WHERE id = @Id",
-            new { Id = automationId }, cancellationToken: cancellationToken));
+            "SELECT schedule_type as ScheduleType, interval_minutes as IntervalMinutes, daily_time as DailyTime FROM automation WHERE automation_id = @AutomationId",
+            new { AutomationId = automationId }, cancellationToken: cancellationToken));
 
         var now = DateTime.UtcNow;
         var nextRunAt = enabled
@@ -138,11 +129,11 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
 
         await connection.ExecuteAsync(new CommandDefinition(
             @"UPDATE automation
-                 SET enabled = @Enabled,
+                 SET is_enabled = @Enabled,
                      next_run_at = @NextRunAt,
                      updated_at = @Now
-               WHERE id = @Id",
-            new { Id = automationId, Enabled = enabled ? 1 : 0, NextRunAt = nextRunAt, Now = now.ToString("O") }, cancellationToken: cancellationToken));
+               WHERE automation_id = @AutomationId",
+            new { AutomationId = automationId, Enabled = enabled ? 1 : 0, NextRunAt = nextRunAt, Now = now.ToString("O") }, cancellationToken: cancellationToken));
     }
 
     public async Task<string> RunNowAsync(string automationId, CancellationToken cancellationToken = default)
@@ -155,25 +146,25 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await connection.OpenAsync(cancellationToken);
 
         await connection.ExecuteAsync(new CommandDefinition(
-            @"INSERT INTO automation_run (id, automation_id, trigger_type, status, started_at, finished_at)
-              VALUES (@Id, @AutomationId, 'manual', 'success', @Now, @Now)",
-            new { Id = runId, AutomationId = automationId, Now = now.ToString("O") }, cancellationToken: cancellationToken));
+            @"INSERT INTO automation_run (automation_run_id, automation_id, started_at, ended_at, status, error, created_run_id)
+              VALUES (@RunId, @AutomationId, @Now, @Now, 'success', NULL, NULL)",
+            new { RunId = runId, AutomationId = automationId, Now = now.ToString("O") }, cancellationToken: cancellationToken));
+
+        var schedule = await connection.QuerySingleOrDefaultAsync<(string ScheduleType, int? IntervalMinutes, string? DailyTime, int IsEnabled)>(new CommandDefinition(
+            "SELECT schedule_type as ScheduleType, interval_minutes as IntervalMinutes, daily_time as DailyTime, is_enabled as IsEnabled FROM automation WHERE automation_id = @AutomationId",
+            new { AutomationId = automationId }, cancellationToken: cancellationToken));
+
+        var nextRunAt = schedule.IsEnabled == 1
+            ? ComputeNextRunAt(new AutomationUpsertRequest { ScheduleType = schedule.ScheduleType, IntervalMinutes = schedule.IntervalMinutes, DailyTime = schedule.DailyTime }, now)
+            : null;
 
         await connection.ExecuteAsync(new CommandDefinition(
             @"UPDATE automation
                  SET last_run_at = @Now,
-                     last_status = 'success',
-                     next_run_at = CASE
-                        WHEN enabled = 0 THEN NULL
-                        WHEN schedule_type = 'daily' THEN CASE
-                            WHEN time(@Now) <= time(daily_time || ':00') THEN strftime('%Y-%m-%dT', @Now) || daily_time || ':00.0000000Z'
-                            ELSE strftime('%Y-%m-%dT', datetime(@Now, '+1 day')) || daily_time || ':00.0000000Z'
-                        END
-                        ELSE datetime(@Now, '+' || COALESCE(interval_minutes, 60) || ' minutes')
-                     END,
+                     next_run_at = @NextRunAt,
                      updated_at = @Now
-               WHERE id = @AutomationId",
-            new { AutomationId = automationId, Now = now.ToString("O") }, cancellationToken: cancellationToken));
+               WHERE automation_id = @AutomationId",
+            new { AutomationId = automationId, Now = now.ToString("O"), NextRunAt = nextRunAt }, cancellationToken: cancellationToken));
 
         return runId;
     }
@@ -185,18 +176,30 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         await connection.OpenAsync(cancellationToken);
 
         var rows = await connection.QueryAsync<AutomationRunRecord>(new CommandDefinition(
-            @"SELECT id,
+            @"SELECT automation_run_id AS Id,
                      automation_id AS AutomationId,
-                     trigger_type AS TriggerType,
+                     'manual' AS TriggerType,
                      status,
                      started_at AS StartedAt,
-                     finished_at AS FinishedAt
+                     ended_at AS FinishedAt
                 FROM automation_run
                WHERE automation_id = @AutomationId
             ORDER BY started_at DESC",
             new { AutomationId = automationId }, cancellationToken: cancellationToken));
 
         return rows.ToList();
+    }
+
+    private static string BuildPayloadJson(AutomationUpsertRequest request)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            type = request.PayloadType,
+            agentId = Clean(request.AgentId),
+            query = request.QueryText?.Trim(),
+            companyScopeMode = request.CompanyScopeMode,
+            companyScopeIds = request.CompanyScopeIds
+        });
     }
 
     private static string? ComputeNextRunAt(AutomationUpsertRequest request, DateTime nowUtc)
@@ -224,7 +227,8 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
         var builder = new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
-            ForeignKeys = true
+            ForeignKeys = true,
+            Pooling = false
         };
 
         return new SqliteConnection(builder.ToString());
@@ -241,7 +245,7 @@ public sealed class SqliteAutomationService(IAppSettingsService appSettingsServi
             return existing;
         }
 
-        var workspaceId = Guid.NewGuid().ToString();
+        var workspaceId = "default";
         var now = DateTime.UtcNow.ToString("O");
         await connection.ExecuteAsync(new CommandDefinition(
             "INSERT INTO workspace (id, name, description, created_at, updated_at) VALUES (@Id, @Name, @Description, @Now, @Now)",

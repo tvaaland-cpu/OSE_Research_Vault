@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
@@ -305,7 +305,7 @@ public sealed class OseDirectoryCsvConnector(IAppSettingsService appSettingsServ
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true };
+        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false };
         return new SqliteConnection(builder.ToString());
     }
 

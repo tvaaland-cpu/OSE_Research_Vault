@@ -48,10 +48,7 @@ public sealed class BackupServiceTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            TestCleanup.DeleteDirectory(tempRoot);
         }
     }
 

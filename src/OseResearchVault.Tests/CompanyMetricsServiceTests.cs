@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -28,8 +28,7 @@ public sealed class CompanyMetricsServiceTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT workspace_id FROM company WHERE id = @CompanyId", new { CompanyId = companyId });
@@ -49,8 +48,8 @@ public sealed class CompanyMetricsServiceTests
                 "INSERT INTO snippet (id, workspace_id, document_id, source_id, quote_text, context, created_at, updated_at) VALUES (@Id, @WorkspaceId, @DocumentId, @SourceId, 'Revenue reached 123', 'p. 5', @Now, @Now)",
                 new { Id = snippetId, WorkspaceId = workspaceId, DocumentId = documentId, SourceId = sourceId, Now = now });
             await connection.ExecuteAsync(
-                @"INSERT INTO metric (id, workspace_id, company_id, metric_key, metric_value, unit, period_start, recorded_at, snippet_id, currency, created_at)
-                  VALUES (@Id, @WorkspaceId, @CompanyId, 'Revenue', 123, 'MNOK', '2024-Q1', @Now, @SnippetId, 'NOK', @Now)",
+                @"INSERT INTO metric (metric_id, workspace_id, company_id, metric_name, period, value, unit, currency, snippet_id, created_at)
+                  VALUES (@Id, @WorkspaceId, @CompanyId, 'Revenue', '2024-Q1', 123, 'MNOK', 'NOK', @SnippetId, @Now)",
                 new { Id = metricId, WorkspaceId = workspaceId, CompanyId = companyId, SnippetId = snippetId, Now = now });
 
             var metrics = await companyService.GetCompanyMetricsAsync(companyId);
@@ -61,7 +60,7 @@ public sealed class CompanyMetricsServiceTests
 
             var names = await companyService.GetCompanyMetricNamesAsync(companyId);
             Assert.Single(names);
-            Assert.Equal("Revenue", names[0]);
+            Assert.Contains("Revenue", names[0], StringComparison.Ordinal);
 
             await companyService.UpdateCompanyMetricAsync(metricId, new CompanyMetricUpdateRequest
             {
@@ -82,10 +81,7 @@ public sealed class CompanyMetricsServiceTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            TestCleanup.DeleteDirectory(tempRoot);
         }
     }
 

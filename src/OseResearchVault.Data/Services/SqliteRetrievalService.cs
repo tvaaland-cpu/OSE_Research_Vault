@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using OseResearchVault.Core.Interfaces;
@@ -252,7 +252,7 @@ SELECT d.id AS Id,
 SELECT s.id AS Id,
        COALESCE(substr(s.quote_text, 1, 120), '(snippet)') AS Title,
        trim(COALESCE(s.quote_text, '') || ' ' || COALESCE(s.context, '')) AS Text,
-       COALESCE(NULLIF(s.locator, ''), 'snippet') AS Locator,
+       COALESCE(NULLIF(s.context, ''), 'snippet') AS Locator,
        bm25(snippet_fts) AS Rank
   FROM snippet_fts
   JOIN snippet s ON s.id = snippet_fts.id
@@ -353,7 +353,7 @@ SELECT a.id AS Id,
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 
     private interface IRankedRow

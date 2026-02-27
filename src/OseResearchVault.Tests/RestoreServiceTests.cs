@@ -42,10 +42,7 @@ public sealed class RestoreServiceTests
         }
         finally
         {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, recursive: true);
-            }
+            TestCleanup.DeleteDirectory(tempRoot);
         }
     }
 
@@ -57,13 +54,15 @@ public sealed class RestoreServiceTests
         try
         {
             var dbPath = Path.Combine(buildRoot, "fixture.db");
-            await using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+            await using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath, Pooling = false }.ToString()))
             {
                 await connection.OpenAsync();
                 await connection.ExecuteAsync("CREATE TABLE workspace (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);");
                 await connection.ExecuteAsync("INSERT INTO workspace (id, name, description, created_at, updated_at) VALUES (@Id, @Name, @Description, @Now, @Now)",
                     new { Id = "workspace-1", Name = "Workspace From Backup", Description = "fixture", Now = DateTimeOffset.UtcNow.ToString("O") });
             }
+
+            SqliteConnection.ClearAllPools();
 
             var vaultFile = Path.Combine(buildRoot, "sample.txt");
             await File.WriteAllTextAsync(vaultFile, "restored content");
@@ -83,10 +82,7 @@ public sealed class RestoreServiceTests
         }
         finally
         {
-            if (Directory.Exists(buildRoot))
-            {
-                Directory.Delete(buildRoot, recursive: true);
-            }
+            TestCleanup.DeleteDirectory(buildRoot);
         }
     }
 

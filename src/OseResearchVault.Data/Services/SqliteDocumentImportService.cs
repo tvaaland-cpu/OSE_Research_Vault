@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -269,8 +269,7 @@ public sealed partial class SqliteDocumentImportService(
         return new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
-            ForeignKeys = true
-        }.ToString());
+            ForeignKeys = true, Pooling = false }.ToString());
     }
 
     private static async Task<string> EnsureWorkspaceAsync(string databasePath, CancellationToken cancellationToken)

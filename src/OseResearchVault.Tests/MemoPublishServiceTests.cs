@@ -82,10 +82,7 @@ public sealed class MemoPublishServiceTests
 
     private static void Cleanup(string tempRoot)
     {
-        if (Directory.Exists(tempRoot))
-        {
-            Directory.Delete(tempRoot, recursive: true);
-        }
+        TestCleanup.DeleteDirectory(tempRoot);
     }
 
     private sealed class TestAppSettingsService(string rootDirectory) : IAppSettingsService

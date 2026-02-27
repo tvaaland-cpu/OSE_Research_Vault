@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -126,7 +126,7 @@ public sealed class AutomationSchedulerTests
 
         workspaceId = Guid.NewGuid().ToString();
         await connection.ExecuteAsync(
-            "INSERT INTO workspace (id, name, base_path, created_at, updated_at) VALUES (@Id, 'Default Workspace', '', @Now, @Now)",
+            "INSERT INTO workspace (id, name, description, created_at, updated_at) VALUES (@Id, 'Default Workspace', '', @Now, @Now)",
             new { Id = workspaceId, Now = DateTimeOffset.UtcNow.ToString("O") });
 
         return workspaceId;
@@ -145,8 +145,7 @@ public sealed class AutomationSchedulerTests
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = databaseFilePath,
-            ForeignKeys = true
-        }.ToString();
+            ForeignKeys = true, Pooling = false }.ToString();
 
         return new SqliteConnection(connectionString);
     }

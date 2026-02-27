@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -41,8 +41,7 @@ public sealed class CompanyPriceImportTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var snapshotPath = await connection.QuerySingleAsync<string>("SELECT file_path FROM document WHERE id = @Id", new { Id = result.DocumentId });
@@ -83,8 +82,7 @@ public sealed class CompanyPriceImportTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var count = await connection.QuerySingleAsync<int>("SELECT COUNT(*) FROM price_daily WHERE company_id = @CompanyId", new { CompanyId = companyId });

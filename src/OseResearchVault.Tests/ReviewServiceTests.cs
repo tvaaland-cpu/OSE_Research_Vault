@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -112,11 +112,23 @@ public sealed class ReviewServiceTests
                 new { WorkspaceId = workspaceId, CompanyId = companyId });
 
             await connection.ExecuteAsync(
-                @"INSERT INTO metric (id, workspace_id, company_id, metric_key, metric_value, period_end, period_label, unit, recorded_at, created_at)
+                @"INSERT INTO document (id, workspace_id, company_id, title, created_at, updated_at)
                   VALUES
-                  ('metric-1', @WorkspaceId, @CompanyId, 'Revenue', 120, '2025-12-31', '2025Q4', 'MNOK', '2026-01-20T00:00:00Z', '2026-01-20T00:00:00Z'),
-                  ('metric-2', @WorkspaceId, @CompanyId, 'Revenue', 140, '2026-03-31', '2026Q1', 'MNOK', '2026-03-31T00:00:00Z', '2026-03-31T00:00:00Z'),
-                  ('metric-3', @WorkspaceId, @CompanyId, 'EBITDA', 30, '2025-12-31', '2025Q4', 'MNOK', '2026-01-20T00:00:00Z', '2026-01-20T00:00:00Z')",
+                  ('doc-quarter', @WorkspaceId, @CompanyId, 'Q1 Report', '2026-02-10T00:00:00Z', '2026-02-10T00:00:00Z')",
+                new { WorkspaceId = workspaceId, CompanyId = companyId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO snippet (id, workspace_id, document_id, quote_text, context, created_at)
+                  VALUES
+                  ('snippet-quarter', @WorkspaceId, 'doc-quarter', 'Quote', 'p.1', '2026-02-11T00:00:00Z')",
+                new { WorkspaceId = workspaceId });
+
+            await connection.ExecuteAsync(
+                @"INSERT INTO metric (metric_id, workspace_id, company_id, metric_name, value, period, unit, currency, snippet_id, created_at)
+                  VALUES
+                  ('metric-1', @WorkspaceId, @CompanyId, 'Revenue', 120, '2025Q4', 'MNOK', NULL, 'snippet-quarter', '2026-01-20T00:00:00Z'),
+                  ('metric-2', @WorkspaceId, @CompanyId, 'Revenue', 140, '2026Q1', 'MNOK', NULL, 'snippet-quarter', '2026-03-31T00:00:00Z'),
+                  ('metric-3', @WorkspaceId, @CompanyId, 'EBITDA', 30, '2025Q4', 'MNOK', NULL, 'snippet-quarter', '2026-01-20T00:00:00Z')",
                 new { WorkspaceId = workspaceId, CompanyId = companyId });
 
             await connection.ExecuteAsync(
@@ -136,18 +148,6 @@ public sealed class ReviewServiceTests
                   VALUES
                   ('cat-open', @WorkspaceId, @CompanyId, 'New product launch', '2026-02-15', 'open', 'high', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
                   ('cat-done', @WorkspaceId, @CompanyId, 'Pricing update', '2026-01-15', 'done', 'med', '2026-01-01T00:00:00Z', '2026-01-20T00:00:00Z')",
-                new { WorkspaceId = workspaceId, CompanyId = companyId });
-
-            await connection.ExecuteAsync(
-                @"INSERT INTO document (id, workspace_id, company_id, title, created_at, updated_at)
-                  VALUES
-                  ('doc-quarter', @WorkspaceId, @CompanyId, 'Q1 Report', '2026-02-10T00:00:00Z', '2026-02-10T00:00:00Z')",
-                new { WorkspaceId = workspaceId, CompanyId = companyId });
-
-            await connection.ExecuteAsync(
-                @"INSERT INTO snippet (id, workspace_id, company_id, document_id, quote_text, locator, created_at)
-                  VALUES
-                  ('snippet-quarter', @WorkspaceId, @CompanyId, 'doc-quarter', 'Quote', 'p.1', '2026-02-11T00:00:00Z')",
                 new { WorkspaceId = workspaceId, CompanyId = companyId });
 
             var ftsSyncService = new CapturingFtsSyncService();
@@ -243,7 +243,7 @@ public sealed class ReviewServiceTests
     }
 
     private static SqliteConnection OpenConnection(string databasePath)
-        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
 
     private sealed class TestAppSettingsService(string rootDirectory) : IAppSettingsService
     {
@@ -274,15 +274,17 @@ public sealed class ReviewServiceTests
     {
         public string LastNoteId { get; private set; } = string.Empty;
 
-        public Task DeleteArtifactAsync(string artifactId, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task DeleteNoteAsync(string noteId, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task UpsertArtifactAsync(string artifactId, string content, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task UpsertDocumentAsync(string documentId, string title, string content, string? companyName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteArtifactAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteDocumentTextAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteNoteAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteSnippetAsync(string id, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task UpsertArtifactAsync(string id, string? content, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task UpsertDocumentTextAsync(string id, string title, string content, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task UpsertSnippetAsync(string id, string text, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task UpsertNoteAsync(string noteId, string title, string content, CancellationToken cancellationToken = default)
+        public Task UpsertNoteAsync(string id, string title, string content, CancellationToken cancellationToken = default)
         {
-            LastNoteId = noteId;
+            LastNoteId = id;
             return Task.CompletedTask;
         }
     }

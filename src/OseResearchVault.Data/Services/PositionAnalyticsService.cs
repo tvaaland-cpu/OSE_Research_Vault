@@ -39,7 +39,7 @@ public sealed class PositionAnalyticsService(ITradeRepository tradeRepository) :
         }
 
         var averageCost = netQuantity > 0 ? costPool / netQuantity : 0d;
-        var currentExposure = latestPrice.HasValue ? latestPrice.Value * netQuantity : null;
+        var currentExposure = latestPrice.HasValue ? (double?)(latestPrice.Value * netQuantity) : null;
 
         return new PositionStats
         {

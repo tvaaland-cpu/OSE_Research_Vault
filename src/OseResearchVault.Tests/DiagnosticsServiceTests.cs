@@ -27,7 +27,8 @@ public sealed class DiagnosticsServiceTests
 
             using var archive = ZipFile.OpenRead(tempZipPath);
             Assert.Contains(archive.Entries, entry => entry.FullName == "manifest.json");
-            Assert.Contains(archive.Entries, entry => entry.FullName == Path.Combine("logs", Path.GetFileName(logFilePath)).Replace('\\', '/'));
+            Assert.Contains(archive.Entries, entry =>
+                entry.FullName.Replace('\\', '/').Equals($"logs/{Path.GetFileName(logFilePath)}", StringComparison.Ordinal));
 
             var manifestEntry = archive.GetEntry("manifest.json");
             Assert.NotNull(manifestEntry);

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
@@ -167,7 +167,7 @@ public sealed partial class SqliteMemoPublishService(IAppSettingsService appSett
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true };
+        var builder = new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false };
         return new SqliteConnection(builder.ToString());
     }
 

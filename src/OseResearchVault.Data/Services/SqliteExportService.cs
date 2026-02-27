@@ -27,11 +27,15 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
         await connection.OpenAsync(cancellationToken);
 
         var company = await connection.QuerySingleOrDefaultAsync<CompanyRow>(new CommandDefinition(
-            @"SELECT id, name, ticker, isin FROM company WHERE id = @CompanyId", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+            @"SELECT id, workspace_id AS WorkspaceId, name, ticker, isin
+                FROM company
+               WHERE id = @CompanyId", new { CompanyId = companyId }, cancellationToken: cancellationToken));
         if (company is null)
         {
             throw new InvalidOperationException("Company not found.");
         }
+
+        var effectiveWorkspaceId = string.IsNullOrWhiteSpace(workspaceId) ? company.WorkspaceId : workspaceId;
 
         var notesSql = redactionOptions.ExcludePrivateTaggedItems
             ? @"SELECT n.id, n.title, n.note_type AS NoteType, n.content, n.updated_at AS UpdatedAt
@@ -51,9 +55,9 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
         var notes = await connection.QueryAsync<NoteRow>(new CommandDefinition(notesSql, new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         var metrics = await connection.QueryAsync<MetricRow>(new CommandDefinition(
-            @"SELECT m.metric_key AS MetricName,
-                     TRIM(COALESCE(m.period_start, '') || CASE WHEN m.period_start IS NOT NULL AND m.period_end IS NOT NULL THEN ' - ' ELSE '' END || COALESCE(m.period_end, '')) AS Period,
-                     m.metric_value AS Value,
+            @"SELECT m.metric_name AS MetricName,
+                     COALESCE(m.period, '') AS Period,
+                     m.value AS Value,
                      m.unit,
                      m.currency,
                      d.title AS EvidenceDocumentTitle,
@@ -63,7 +67,7 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
                 LEFT JOIN snippet s ON s.id = m.snippet_id
                 LEFT JOIN document d ON d.id = s.document_id
                WHERE m.company_id = @CompanyId
-            ORDER BY m.recorded_at DESC", new { CompanyId = companyId }, cancellationToken: cancellationToken));
+            ORDER BY m.created_at DESC", new { CompanyId = companyId }, cancellationToken: cancellationToken));
 
         var events = await connection.QueryAsync<EventRow>(new CommandDefinition(
             @"SELECT e.occurred_at AS EventDate,
@@ -82,16 +86,23 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
         var artifactsSql = redactionOptions.ExcludePrivateTaggedItems
             ? @"SELECT a.id, a.title, a.content
                   FROM artifact a
-                 WHERE a.company_id = @CompanyId
+                  LEFT JOIN agent_run ar ON ar.id = a.agent_run_id
+                 WHERE a.workspace_id = @WorkspaceId
+                   AND (@CompanyId = '' OR ar.company_id = @CompanyId)
                    AND NOT EXISTS (
-                        SELECT 1
-                          FROM artifact_tag at
-                          INNER JOIN tag t ON t.id = at.tag_id
-                         WHERE at.artifact_id = a.id
-                           AND LOWER(t.name) = 'private')
-              ORDER BY a.created_at"
-            : @"SELECT id, title, content FROM artifact WHERE company_id = @CompanyId ORDER BY created_at";
-        var artifacts = await connection.QueryAsync<ArtifactRow>(new CommandDefinition(artifactsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken));
+                         SELECT 1
+                           FROM artifact_tag at
+                           INNER JOIN tag t ON t.id = at.tag_id
+                          WHERE at.artifact_id = a.id
+                            AND LOWER(t.name) = 'private')
+               ORDER BY a.created_at"
+            : @"SELECT a.id, a.title, a.content
+                  FROM artifact a
+                  LEFT JOIN agent_run ar ON ar.id = a.agent_run_id
+                 WHERE a.workspace_id = @WorkspaceId
+                   AND (@CompanyId = '' OR ar.company_id = @CompanyId)
+              ORDER BY a.created_at";
+        var artifacts = await connection.QueryAsync<ArtifactRow>(new CommandDefinition(artifactsSql, new { CompanyId = companyId, WorkspaceId = effectiveWorkspaceId }, cancellationToken: cancellationToken));
 
         var hasArchivedFlag = await HasColumnAsync(connection, "document", "is_archived", cancellationToken);
         var documentsSql = redactionOptions.ExcludePrivateTaggedItems
@@ -125,7 +136,7 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
                      WHERE company_id = @CompanyId";
         var documents = (await connection.QueryAsync<DocumentRow>(new CommandDefinition(documentsSql, new { CompanyId = companyId }, cancellationToken: cancellationToken))).ToList();
 
-        var index = Redact(BuildIndex(company, DateTimeOffset.UtcNow, workspaceId), redactionOptions);
+        var index = Redact(BuildIndex(company, DateTimeOffset.UtcNow, effectiveWorkspaceId), redactionOptions);
         var notesText = Redact(BuildNotes(notes), redactionOptions);
         var metricsText = BuildMetricsCsv(metrics, redactionOptions);
         var eventsText = BuildEventsCsv(events, redactionOptions);
@@ -323,7 +334,7 @@ public sealed class SqliteExportService(IAppSettingsService appSettingsService, 
     }
 
     private sealed class TableInfoRow { public string Name { get; init; } = string.Empty; }
-    private sealed class CompanyRow { public string Id { get; init; } = string.Empty; public string Name { get; init; } = string.Empty; public string? Ticker { get; init; } public string? Isin { get; init; } }
+    private sealed class CompanyRow { public string Id { get; init; } = string.Empty; public string WorkspaceId { get; init; } = string.Empty; public string Name { get; init; } = string.Empty; public string? Ticker { get; init; } public string? Isin { get; init; } }
     private sealed class NoteRow { public string Id { get; init; } = string.Empty; public string Title { get; init; } = string.Empty; public string? NoteType { get; init; } public string Content { get; init; } = string.Empty; public string UpdatedAt { get; init; } = string.Empty; }
     private sealed class MetricRow { public string MetricName { get; init; } = string.Empty; public string? Period { get; init; } public double? Value { get; init; } public string? Unit { get; init; } public string? Currency { get; init; } public string? EvidenceDocumentTitle { get; init; } public string? EvidenceLocator { get; init; } public string? SnippetId { get; init; } }
     private sealed class EventRow { public string EventDate { get; init; } = string.Empty; public string EventType { get; init; } = string.Empty; public string? Confidence { get; init; } public string Description { get; init; } = string.Empty; public string? EvidenceDocumentTitle { get; init; } public string? EvidenceLocator { get; init; } }

@@ -47,7 +47,7 @@ public sealed class DiagnosticsService : IDiagnosticsService
 
         foreach (var logFile in logFiles)
         {
-            archive.CreateEntryFromFile(logFile.FullName, Path.Combine("logs", logFile.Name));
+            archive.CreateEntryFromFile(logFile.FullName, $"logs/{logFile.Name}");
         }
     }
 
@@ -59,7 +59,7 @@ public sealed class DiagnosticsService : IDiagnosticsService
             osVersion = RuntimeInformation.OSDescription,
             generatedAtUtc = DateTimeOffset.UtcNow,
             includesMigrationList = includeMigrationList,
-            migrations = includeMigrationList ? MigrationCatalog.All.Select(migration => migration.Id).ToArray() : Array.Empty<string>()
+            migrations = includeMigrationList ? MigrationCatalog.All.Select(migration => migration.Version).ToArray() : Array.Empty<string>()
         };
 
         var entry = archive.CreateEntry("manifest.json");

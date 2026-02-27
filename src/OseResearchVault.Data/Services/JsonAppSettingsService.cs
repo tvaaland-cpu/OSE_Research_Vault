@@ -7,6 +7,8 @@ namespace OseResearchVault.Data.Services;
 public sealed class JsonAppSettingsService : IAppSettingsService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private const int IoRetryCount = 5;
+    private static readonly TimeSpan IoRetryDelay = TimeSpan.FromMilliseconds(40);
 
     public async Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
     {
@@ -19,7 +21,7 @@ public sealed class JsonAppSettingsService : IAppSettingsService
             return defaults;
         }
 
-        await using var stream = File.OpenRead(AppPaths.SettingsFilePath);
+        await using var stream = await OpenSettingsReadStreamWithRetryAsync(cancellationToken);
         var settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, SerializerOptions, cancellationToken)
             ?? BuildDefaults();
 
@@ -39,8 +41,42 @@ public sealed class JsonAppSettingsService : IAppSettingsService
     {
         EnsureDirectories(settings);
 
-        await using var stream = File.Create(AppPaths.SettingsFilePath);
+        await using var stream = await OpenSettingsWriteStreamWithRetryAsync(cancellationToken);
         await JsonSerializer.SerializeAsync(stream, settings, SerializerOptions, cancellationToken);
+    }
+
+    private static async Task<FileStream> OpenSettingsReadStreamWithRetryAsync(CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return File.Open(AppPaths.SettingsFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            }
+            catch (IOException) when (attempt < IoRetryCount)
+            {
+                await Task.Delay(IoRetryDelay, cancellationToken);
+            }
+        }
+    }
+
+    private static async Task<FileStream> OpenSettingsWriteStreamWithRetryAsync(CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(
+                    AppPaths.SettingsFilePath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.ReadWrite);
+            }
+            catch (IOException) when (attempt < IoRetryCount)
+            {
+                await Task.Delay(IoRetryDelay, cancellationToken);
+            }
+        }
     }
 
     private static AppSettings BuildDefaults()

@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -43,8 +43,7 @@ public sealed class NoteAiImportFlowTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var artifact = await connection.QuerySingleAsync<(string artifact_type, string content_format, string content, string metadata_json)>(
@@ -98,8 +97,7 @@ public sealed class NoteAiImportFlowTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var linkedTag = await connection.QuerySingleAsync<string>(

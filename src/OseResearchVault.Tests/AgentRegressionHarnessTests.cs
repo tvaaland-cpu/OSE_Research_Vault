@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -23,8 +23,7 @@ public sealed class RetrievalRegressionTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
@@ -43,8 +42,8 @@ public sealed class RetrievalRegressionTests
             var docId = "00000000-0000-0000-0000-000000000102";
             await connection.ExecuteAsync("INSERT INTO document(id, workspace_id, company_id, title, created_at, updated_at) VALUES (@Id, @WorkspaceId, @CompanyId, @Title, @Now, @Now)",
                 new { Id = docId, WorkspaceId = workspaceId, CompanyId = companyId, Title = "Earnings transcript", Now = now });
-            await connection.ExecuteAsync("INSERT INTO document_text(id, workspace_id, document_id, chunk_index, content, created_at, updated_at) VALUES (@Id, @WorkspaceId, @DocumentId, 0, @Content, @Now, @Now)",
-                new { Id = Guid.NewGuid().ToString(), WorkspaceId = workspaceId, DocumentId = docId, Content = "margin trend discussed in prepared remarks", Now = now });
+            await connection.ExecuteAsync("INSERT INTO document_text(id, document_id, chunk_index, content, created_at, updated_at) VALUES (@Id, @DocumentId, 0, @Content, @Now, @Now)",
+                new { Id = Guid.NewGuid().ToString(), DocumentId = docId, Content = "margin trend discussed in prepared remarks", Now = now });
             await connection.ExecuteAsync("INSERT INTO document_text_fts(id, title, content) VALUES (@Id, @Title, @Content)",
                 new { Id = docId, Title = "Earnings transcript", Content = "margin trend discussed in prepared remarks" });
 
@@ -156,15 +155,15 @@ public sealed class CitationParsingTests
             var doc = (await docService.GetDocumentsAsync()).Single();
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
             var snippetId = Guid.NewGuid().ToString();
             var now = DateTime.UtcNow.ToString("O");
             await connection.ExecuteAsync(
-                "INSERT INTO snippet(id, workspace_id, document_id, quote_text, context, locator, created_at, updated_at) VALUES (@Id, @WorkspaceId, @DocumentId, @QuoteText, @Context, @Locator, @Now, @Now)",
-                new { Id = snippetId, WorkspaceId = workspaceId, DocumentId = doc.Id, QuoteText = "pricing remained firm", Context = "channel checks", Locator = "p.4", Now = now });
+                "INSERT INTO snippet(id, workspace_id, document_id, quote_text, context, created_at, updated_at) VALUES (@Id, @WorkspaceId, @DocumentId, @QuoteText, @Context, @Now, @Now)",
+                new { Id = snippetId, WorkspaceId = workspaceId, DocumentId = doc.Id, QuoteText = "pricing remained firm", Context = "channel checks p.4", Now = now });
 
             var templatePath = Path.Combine(AppContext.BaseDirectory, "TestData", "Regression", "canned-model-output.txt");
             var template = await File.ReadAllTextAsync(templatePath);
@@ -200,14 +199,16 @@ internal sealed class RegressionTestAppSettingsService(string rootDirectory) : I
 {
     private readonly AppSettings _settings = new()
     {
-        WorkspaceRoot = Path.Combine(rootDirectory, "workspace"),
-        DatabaseFilePath = Path.Combine(rootDirectory, "vault.db"),
-        BackupDirectory = Path.Combine(rootDirectory, "backup"),
-        FileInboxDirectory = Path.Combine(rootDirectory, "inbox")
+        DatabaseDirectory = Path.Combine(rootDirectory, "db"),
+        VaultStorageDirectory = Path.Combine(rootDirectory, "vault")
     };
 
     public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(_settings);
+    {
+        Directory.CreateDirectory(_settings.DatabaseDirectory);
+        Directory.CreateDirectory(_settings.VaultStorageDirectory);
+        return Task.FromResult(_settings);
+    }
 
     public Task SaveSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();

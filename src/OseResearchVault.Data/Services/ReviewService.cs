@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
@@ -201,16 +201,16 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
             cancellationToken: cancellationToken))).ToList();
 
         var metricRows = (await connection.QueryAsync<MetricRow>(new CommandDefinition(
-            @"SELECT id AS MetricId,
-                     metric_key AS MetricKey,
-                     COALESCE(NULLIF(TRIM(period_label), ''), NULLIF(TRIM(period_end), ''), NULLIF(TRIM(period_start), ''), substr(recorded_at, 1, 10)) AS PeriodLabel,
-                     COALESCE(metric_value, 0) AS MetricValue,
+            @"SELECT metric_id AS MetricId,
+                     metric_name AS MetricKey,
+                     COALESCE(NULLIF(TRIM(period), ''), substr(created_at, 1, 10)) AS PeriodLabel,
+                     COALESCE(value, 0) AS MetricValue,
                      unit AS Unit,
                      currency AS Currency,
-                     recorded_at AS RecordedAt
+                     created_at AS RecordedAt
                 FROM metric
                WHERE company_id = @CompanyId
-            ORDER BY recorded_at DESC, created_at DESC",
+            ORDER BY created_at DESC",
             new { CompanyId = companyId },
             cancellationToken: cancellationToken))).ToList();
 
@@ -272,10 +272,10 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
                      s.created_at AS CreatedAt
                 FROM snippet s
                 LEFT JOIN document d ON d.id = s.document_id
-               WHERE s.company_id = @CompanyId
-                 AND s.created_at >= @WindowStart
-                 AND s.created_at < @WindowEnd
-            ORDER BY s.created_at DESC",
+               WHERE d.company_id = @CompanyId
+                  AND s.created_at >= @WindowStart
+                  AND s.created_at < @WindowEnd
+             ORDER BY s.created_at DESC",
             new { CompanyId = companyId, WindowStart = periodStart.ToString("O"), WindowEnd = periodEndExclusive.ToString("O") },
             cancellationToken: cancellationToken))).ToList();
 
@@ -454,7 +454,7 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
         {
             foreach (var entry in journalEntries)
             {
-                sb.AppendLine($"- {entry.EntryDate}: {entry.Action} (`journal_entry:{entry.JournalEntryId}`) — {entry.Rationale}");
+                sb.AppendLine($"- {entry.EntryDate}: {entry.Action} (`journal_entry:{entry.JournalEntryId}`) â€” {entry.Rationale}");
             }
         }
 
@@ -586,11 +586,11 @@ public sealed class ReviewService(IAppSettingsService appSettingsService, IFtsSy
     }
 
     private static SqliteConnection OpenConnection(string databasePath)
-        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        => new(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
 
     private sealed record DocumentRow(string DocumentId, string Title, string CompanyName, string CreatedAt);
     private sealed record NoteRow(string NoteId, string Title, string CompanyName, string ActivityAt);
-    private sealed record AgentRunRow(string RunId, string AgentName, string CompanyName, string Status, string StartedAt, int ArtifactCount);
+    private sealed record AgentRunRow(string RunId, string AgentName, string CompanyName, string Status, string StartedAt, long ArtifactCount);
     private sealed record EventRow(string EventId, string Title, string CompanyName, string OccurredAt, string EventType);
     private sealed record CatalystRow(string CatalystId, string Title, string CompanyName, string? ExpectedStart, string Status);
     private sealed record TradeRow(string TradeId, string CompanyName, string TradeDate, string Side, double Quantity, double Price, string Currency);

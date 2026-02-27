@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -56,7 +56,7 @@ public sealed class DataQualityServiceTests
     private static async Task<(string CompanyId, string UnlinkedDocumentId, string UnlinkedNoteId, string KeepDocumentId, string DuplicateHash)> SeedDataAsync(IAppSettingsService settingsService)
     {
         var settings = await settingsService.GetSettingsAsync();
-        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+        await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
         await connection.OpenAsync();
 
         var now = DateTime.UtcNow.ToString("O");
@@ -72,13 +72,13 @@ public sealed class DataQualityServiceTests
         await connection.ExecuteAsync("INSERT INTO workspace (id, name, created_at, updated_at) VALUES (@Id, @Name, @Now, @Now)", new { Id = workspaceId, Name = "Default", Now = now });
         await connection.ExecuteAsync("INSERT INTO company (id, workspace_id, name, ticker, isin, created_at, updated_at) VALUES (@Id, @WorkspaceId, @Name, @Ticker, @Isin, @Now, @Now)", new { Id = companyId, WorkspaceId = workspaceId, Name = "Acme", Ticker = "NAPA.OL", Isin = "NO0010816924", Now = now });
 
-        await connection.ExecuteAsync(@"INSERT INTO document (id, workspace_id, title, content_hash, imported_at, file_path, created_at, updated_at)
-                                       VALUES (@Id, @WorkspaceId, @Title, @Hash, @Now, @Path, @Now, @Now)",
+        await connection.ExecuteAsync(@"INSERT INTO document (id, workspace_id, company_id, title, content_hash, imported_at, file_path, created_at, updated_at)
+                                       VALUES (@Id, @WorkspaceId, @CompanyId, @Title, @Hash, @Now, @Path, @Now, @Now)",
             new[]
             {
-                new { Id = keepId, WorkspaceId = workspaceId, Title = "Dup Keep", Hash = duplicateHash, Now = now, Path = "/tmp/a.txt" },
-                new { Id = archiveId, WorkspaceId = workspaceId, Title = "Dup Archive", Hash = duplicateHash, Now = now, Path = "/tmp/b.txt" },
-                new { Id = unlinkedDocId, WorkspaceId = workspaceId, Title = "Unlinked", Hash = "other-hash", Now = now, Path = "/tmp/c.txt" }
+                new { Id = keepId, WorkspaceId = workspaceId, CompanyId = companyId, Title = "Dup Keep", Hash = duplicateHash, Now = now, Path = "/tmp/a.txt" },
+                new { Id = archiveId, WorkspaceId = workspaceId, CompanyId = companyId, Title = "Dup Archive", Hash = duplicateHash, Now = now, Path = "/tmp/b.txt" },
+                new { Id = unlinkedDocId, WorkspaceId = workspaceId, CompanyId = (string?)null, Title = "Unlinked", Hash = "other-hash", Now = now, Path = "/tmp/c.txt" }
             });
 
         await connection.ExecuteAsync("INSERT INTO document_text (id, document_id, content, created_at) VALUES (@Id, @DocumentId, @Content, @Now)",
@@ -90,7 +90,7 @@ public sealed class DataQualityServiceTests
         await connection.ExecuteAsync("INSERT INTO artifact (id, workspace_id, artifact_type, title, created_at, updated_at) VALUES (@Id, @WorkspaceId, 'summary', @Title, @Now, @Now)",
             new { Id = Guid.NewGuid().ToString(), WorkspaceId = workspaceId, Title = "Gap Artifact", Now = now });
 
-        await connection.ExecuteAsync("INSERT INTO snippet (id, workspace_id, locator, quote_text, created_at, updated_at) VALUES (@Id, @WorkspaceId, '', 'bad snippet', @Now, @Now)",
+        await connection.ExecuteAsync("INSERT INTO snippet (id, workspace_id, context, quote_text, created_at, updated_at) VALUES (@Id, @WorkspaceId, '', 'bad snippet', @Now, @Now)",
             new { Id = snippetIssueId, WorkspaceId = workspaceId, Now = now });
 
         return (companyId, unlinkedDocId, unlinkedNoteId, keepId, duplicateHash);

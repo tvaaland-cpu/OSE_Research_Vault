@@ -1,6 +1,7 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Data.Common;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using OseResearchVault.Core.Interfaces;
@@ -464,7 +465,7 @@ public sealed class SqliteAgentService(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         var askAgentId = await EnsureAskMyVaultAgentAsync(connection, workspaceId, now, cancellationToken);
-        var selectedChunks = await SelectRelevantChunksAsync(connection, new AgentRunRequest { AgentId = askAgentId, Query = request.Query, SelectedDocumentIds = request.SelectedDocumentIds }, generationSettings.TopDocumentChunks, cancellationToken);
+        var selectedChunks = await RetrieveRelevantChunksAsync(connection, new AgentRunRequest { AgentId = askAgentId, Query = request.Query, SelectedDocumentIds = request.SelectedDocumentIds }, generationSettings.TopDocumentChunks, cancellationToken);
         var prompt = BuildAskMyVaultPrompt(request.Query, selectedChunks);
         var contextDocsText = string.Join("\n\n", selectedChunks.Select(c => $"[DOC:{c.DocumentId}|chunk:{c.ChunkIndex}] {c.Content}"));
         var promptLabels = selectedChunks.Select(c => $"DOC:{c.DocumentId}|chunk:{c.ChunkIndex}").Distinct().ToArray();
@@ -831,7 +832,7 @@ public sealed class SqliteAgentService(
 
     private static async Task<int> CreateCitationEvidenceLinksAsync(
         SqliteConnection connection,
-        SqliteTransaction transaction,
+        DbTransaction transaction,
         string workspaceId,
         string artifactId,
         string responseText,
@@ -920,7 +921,7 @@ public sealed class SqliteAgentService(
         return agentId;
     }
 
-    private static async Task<int> CreateCitationEvidenceLinksAsync(SqliteConnection connection, SqliteTransaction transaction, string workspaceId, string artifactId, string responseText, IReadOnlyList<DocumentChunkScore> selectedChunks, string now, CancellationToken cancellationToken)
+    private static async Task<int> CreateCitationEvidenceLinksAsync(SqliteConnection connection, DbTransaction transaction, string workspaceId, string artifactId, string responseText, IReadOnlyList<DocumentChunkScore> selectedChunks, string now, CancellationToken cancellationToken)
     {
         var total = 0;
 
@@ -1003,7 +1004,7 @@ public sealed class SqliteAgentService(
 
     private static async Task SaveRunContextAsync(
         SqliteConnection connection,
-        SqliteTransaction transaction,
+        DbTransaction transaction,
         string workspaceId,
         string runId,
         string contextJson,
@@ -1025,7 +1026,7 @@ public sealed class SqliteAgentService(
             }, transaction, cancellationToken: cancellationToken));
     }
 
-    private static async Task ClearDefaultModelProfileAsync(SqliteConnection connection, SqliteTransaction transaction, string workspaceId, CancellationToken cancellationToken)
+    private static async Task ClearDefaultModelProfileAsync(SqliteConnection connection, DbTransaction transaction, string workspaceId, CancellationToken cancellationToken)
     {
         await connection.ExecuteAsync(new CommandDefinition(
             @"UPDATE model_profile
@@ -1133,7 +1134,7 @@ public sealed class SqliteAgentService(
 
     private static SqliteConnection OpenConnection(string databasePath)
     {
-        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true }.ToString());
+        return new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, ForeignKeys = true, Pooling = false }.ToString());
     }
 
     private static async Task<string> EnsureWorkspaceAsync(string databasePath, CancellationToken cancellationToken)

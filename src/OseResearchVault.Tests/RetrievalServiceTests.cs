@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -22,7 +22,7 @@ public sealed class RetrievalServiceTests
             await initializer.InitializeAsync();
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");
@@ -41,7 +41,7 @@ public sealed class RetrievalServiceTests
             await connection.ExecuteAsync("INSERT INTO document_text_fts(id, title, content) VALUES (@Id, @Title, @Content)", new { Id = docId, Title = "OEM transcript", Content = "Management discussed tier-1 OEM build schedules." });
 
             var snippetId = Guid.NewGuid().ToString();
-            await connection.ExecuteAsync("INSERT INTO snippet(id, workspace_id, document_id, quote_text, context, locator, created_at, updated_at) VALUES (@Id, @WorkspaceId, @DocumentId, @Quote, @Context, @Locator, @Now, @Now)", new { Id = snippetId, WorkspaceId = workspaceId, DocumentId = docId, Quote = "tier-1 OEM build schedules", Context = "call notes", Locator = "p.2", Now = now });
+            await connection.ExecuteAsync("INSERT INTO snippet(id, workspace_id, document_id, quote_text, context, created_at, updated_at) VALUES (@Id, @WorkspaceId, @DocumentId, @Quote, @Context, @Now, @Now)", new { Id = snippetId, WorkspaceId = workspaceId, DocumentId = docId, Quote = "tier-1 OEM build schedules", Context = "call notes p.2", Now = now });
             await connection.ExecuteAsync("INSERT INTO snippet_fts(id, text) VALUES (@Id, @Text)", new { Id = snippetId, Text = "tier-1 OEM build schedules call notes" });
 
             var artifactId = Guid.NewGuid().ToString();
@@ -86,7 +86,7 @@ public sealed class RetrievalServiceTests
             await initializer.InitializeAsync();
 
             var settings = await settingsService.GetSettingsAsync();
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true }.ToString());
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = settings.DatabaseFilePath, ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
             var workspaceId = await connection.QuerySingleAsync<string>("SELECT id FROM workspace LIMIT 1");

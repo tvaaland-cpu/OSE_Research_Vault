@@ -6,6 +6,12 @@ namespace OseResearchVault.Data.Services;
 
 public sealed partial class MetricService(IMetricRepository metricRepository) : IMetricService
 {
+    public Task<MetricUpsertResult> UpsertMetricAsync(MetricUpsertRequest request, MetricConflictResolution conflictResolution = MetricConflictResolution.CreateOnly, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("UpsertMetricAsync is supported by SqliteMetricService.");
+
+    public Task<string> CreateMetricAsync(MetricCreateRequest request, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("CreateMetricAsync(MetricCreateRequest) is supported by SqliteMetricService.");
+
     public async Task<Metric> CreateMetricAsync(string workspaceId, string companyId, string metricName, string period, double value, string? unit, string? currency, string snippetId, CancellationToken cancellationToken = default)
     {
         ValidateRequired(workspaceId, companyId, metricName, period, value, snippetId);

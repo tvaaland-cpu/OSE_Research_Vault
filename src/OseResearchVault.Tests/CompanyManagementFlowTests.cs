@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using OseResearchVault.Core.Interfaces;
@@ -67,11 +67,10 @@ public sealed class CompanyManagementFlowTests
             await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
             {
                 DataSource = settings.DatabaseFilePath,
-                ForeignKeys = true
-            }.ToString());
+                ForeignKeys = true, Pooling = false }.ToString());
             await connection.OpenAsync();
 
-            var hasColumns = (await connection.QueryAsync<(string name)>("SELECT name FROM pragma_table_info('company')")).Select(x => x.name).ToList();
+            var hasColumns = (await connection.QueryAsync<string>("SELECT name FROM pragma_table_info('company')")).ToList();
             Assert.Contains("isin", hasColumns, StringComparer.OrdinalIgnoreCase);
             Assert.Contains("summary", hasColumns, StringComparer.OrdinalIgnoreCase);
         }
